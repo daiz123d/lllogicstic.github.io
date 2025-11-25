@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Box3D Manager - Multi Container</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="logo">
+        <i class="fas fa-cubes fs-4 text-info"></i>
+        <h3>Box3D Manager</h3>
+      </div>
+      <ul class="nav flex-column">
+        <li class="nav-item"><a class="nav-link active" href="#"><i class="fas fa-tachometer-alt"></i> Trang chủ</a></li>
+        <li class="nav-item"><a class="nav-link" href="#threeD-container"><i class="fas fa-cube"></i> Trình 3D</a></li>
+        <li class="nav-item"><a class="nav-link" href="#containerSection"><i class="fas fa-box-open"></i> Container</a></li>
+        <li class="nav-item"><a class="nav-link" href="#boxSection"><i class="fas fa-box"></i> Hộp hàng</a></li>
+        <li class="nav-item"><a class="nav-link" href="tracking.html"><i class="fas fa-truck"></i> Theo dõi</a></li>
+      </ul>
+      <div class="mt-4">
+        <div class="tag"><span class="status-dot" style="background: #7ee0b4"></span> Sẵn sàng xếp nhiều container</div>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="main-content">
+      <div class="hero">
+        <div>
+          <div class="pill mb-2">Logistics 3D realtime</div>
+          <h1>Trình xếp hộp đa container</h1>
+          <div class="d-flex gap-2 flex-wrap mt-2">
+            <span class="tag"><i class="fas fa-cube"></i> 3D nâng cấp</span>
+            <span class="tag"><i class="fas fa-layer-group"></i> Xếp nhiều container</span>
+            <span class="tag"><i class="fas fa-file-import"></i> Nhập file container</span>
+          </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <button class="btn btn-outline-light" id="importContainerBtn"><i class="fas fa-upload me-1"></i>Tải file container</button>
+          <input type="file" id="containerFileInput" accept=".csv,.json,.xlsx,.xls" hidden />
+          <button class="btn btn-primary" id="submitBtn"><i class="fas fa-boxes me-1"></i>Xếp hộp</button>
+          <button class="btn btn-outline-light" id="resetBtn"><i class="fas fa-rotate me-1"></i>Đặt lại</button>
+        </div>
+      </div>
+
+      <div class="grid-col-2">
+        <div class="card glass-card" id="threeDCard">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div><i class="fas fa-vr-cardboard me-2"></i>Trình diễn 3D</div>
+            <div class="d-flex gap-2 align-items-center">
+              <label class="me-1 small text-muted">Hiển thị:</label>
+              <select id="containerSelect" class="form-select form-select-sm" style="min-width: 180px;"></select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="controls-stack d-flex justify-content-center mb-3 gap-2">
+              <button type="button" id="stepPrevBtn" class="btn btn-outline-light btn-sm"><i class="fas fa-step-backward"></i></button>
+              <button type="button" id="stepPauseBtn" class="btn btn-outline-light btn-sm"><i class="fas fa-pause"></i></button>
+              <button type="button" id="stepNextBtn" class="btn btn-outline-light btn-sm"><i class="fas fa-step-forward"></i></button>
+            </div>
+            <div id="threeD-container" class="threeD-container"></div>
+            <div class="table-responsive mt-3">
+              <table class="table table-bordered table-sm" id="packedBoxesTable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Container</th>
+                    <th>Rộng</th>
+                    <th>Cao</th>
+                    <th>Dài</th>
+                    <th>Vị trí (x,y,z)</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="mt-3 d-flex gap-3 flex-wrap">
+              <span class="badge-soft"><i class="fas fa-lightbulb me-1"></i>Ánh sáng HDR giả lập</span>
+              <span class="badge-soft"><i class="fas fa-arrows-alt me-1"></i>OrbitControls 360°</span>
+              <span class="badge-soft"><i class="fas fa-border-all me-1"></i>Viền container rõ ràng</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card glass-card" id="containerSection">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div><i class="fas fa-box-open me-2"></i>Container</div>
+            <span class="pill">Nhập nhanh</span>
+          </div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label">Tên/nhãn</label>
+                <input type="text" id="containerNameInput" class="form-control form-control-sm" placeholder="Container 1" />
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Dài (m)</label>
+                <input type="number" id="containerLengthInput" class="form-control form-control-sm" min="0.1" step="0.1" value="4" />
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Rộng (m)</label>
+                <input type="number" id="containerWidthInput" class="form-control form-control-sm" min="0.1" step="0.1" value="5" />
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Cao (m)</label>
+                <input type="number" id="containerHeightInput" class="form-control form-control-sm" min="0.1" step="0.1" value="3" />
+              </div>
+              <div class="col-md-2">
+                <label class="form-label">Tải trọng (kg)</label>
+                <input type="number" id="containerWeightInput" class="form-control form-control-sm" min="0" step="1" placeholder="VD: 5000" />
+              </div>
+              <div class="col-md-1">
+                <label class="form-label">SL</label>
+                <input type="number" id="containerQuantityInput" class="form-control form-control-sm" min="1" step="1" value="1" />
+              </div>
+              <div class="col-md-1 d-flex align-items-end">
+                <button class="btn btn-primary btn-sm w-100" id="addContainerBtn"><i class="fas fa-plus"></i></button>
+              </div>
+            </div>
+            <div class="file-pill mt-3">
+              <i class="fas fa-file-import"></i>
+              <div>
+                <div class="small text-muted">CSV/JSON/XLSX</div>
+                <small>Tối thiểu cột: width,height,length[,name]</small>
+              </div>
+              <button class="btn btn-outline-light btn-sm ms-auto" id="chooseFileBtn">Chọn file</button>
+            </div>
+            <div class="table-responsive mt-3">
+              <table class="table table-bordered table-hover table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Tên</th>
+                    <th>Dài</th>
+                    <th>Rộng</th>
+                    <th>Cao</th>
+                    <th>Tải trọng (kg)</th>
+                    <th>SL</th>
+                    <th>Hành động</th>
+                  </tr>
+                </thead>
+                <tbody id="containerListBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+        <div class="card glass-card" id="boxSection">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div><i class="fas fa-box me-2"></i>Danh sách hộp</div>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-outline-light btn-sm" id="importBoxBtn"><i class="fas fa-file-import me-1"></i>Nhập file hộp</button>
+              <button type="button" class="btn btn-primary btn-sm" id="addBoxBtn"><i class="fas fa-plus me-1"></i>Thêm hộp</button>
+              <input type="file" id="boxFileInput" accept=".csv,.json,.xlsx,.xls" hidden />
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="file-pill mb-3">
+              <i class="fas fa-table"></i>
+              <div>
+                <div class="small text-muted">CSV/JSON/XLSX</div>
+                <small>Cột tối thiểu: width,height,length,quantity[,color,weight,stackable]</small>
+              </div>
+              <button class="btn btn-outline-light btn-sm ms-auto" id="chooseBoxFileBtn">Chọn file</button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-bordered table-sm">
+                <thead>
+                  <tr>
+                    <th>Dài (m)</th>
+                    <th>Rộng (m)</th>
+                    <th>Cao (m)</th>
+                    <th>Số lượng</th>
+                    <th>Màu</th>
+                    <th>Khối lượng (kg)</th>
+                  <th>Xếp chồng</th>
+                  <th>Hành động</th>
+                </tr>
+              </thead>
+              <tbody id="boxList"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-col-2">
+        <div class="card glass-card">
+          <div class="card-header"><i class="fas fa-clipboard-list me-2"></i>Kết quả theo container</div>
+          <div class="card-body" id="containerResults"></div>
+        </div>
+        <div class="card glass-card">
+          <div class="card-header"><i class="fas fa-download me-2"></i>Tóm tắt & xuất</div>
+          <div class="card-body">
+            <div class="d-flex gap-2 mb-3 flex-wrap">
+              <button class="btn btn-success btn-sm" id="exportBoxBtn"><i class="fas fa-file-excel me-1"></i>Xuất hộp</button>
+              <button class="btn btn-outline-light btn-sm" id="exportContainersBtn"><i class="fas fa-save me-1"></i>Lưu container</button>
+            </div>
+            <div id="containerTypeInfo" class="alert alert-success mt-2" style="display:none;"></div>
+            <div id="result" class="alert alert-info mt-2" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card glass-card mb-0">
+        <div class="card-header"><i class="fas fa-list-ol me-2"></i>Quy trình xếp hộp</div>
+        <div class="card-body">
+          <div class="d-flex gap-3 flex-wrap">
+            <div class="tag"><strong>1.</strong> Phân tích kích thước & trọng lượng</div>
+            <div class="tag"><strong>2.</strong> Sắp xếp ưu tiên hộp lớn & nặng</div>
+            <div class="tag"><strong>3.</strong> Chia vùng trống và xếp tuần tự</div>
+            <div class="tag"><strong>4.</strong> Hiển thị 3D + bảng tọa độ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Modal -->
+  <div class="modal fade" id="notificationModal" tabindex="-1" aria-labelledby="notificationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="notificationModalLabel">Thông Báo</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div id="notificationMessage" class="p-3"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Box Modal -->
+  <div class="modal fade" id="addBoxModal" tabindex="-1" aria-labelledby="addBoxModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addBoxModalLabel">Thêm hộp mới</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="addBoxForm">
+            <div class="mb-2">
+              <label for="boxLength" class="form-label">Chiều Dài (m)</label>
+              <input type="number" class="form-control" id="boxLength" min="0.01" step="0.01" required>
+            </div>
+            <div class="mb-2">
+              <label for="boxWidth" class="form-label">Chiều Rộng (m)</label>
+              <input type="number" class="form-control" id="boxWidth" min="0.01" step="0.01" required>
+            </div>
+            <div class="mb-2">
+              <label for="boxHeight" class="form-label">Chiều Cao (m)</label>
+              <input type="number" class="form-control" id="boxHeight" min="0.01" step="0.01" required>
+            </div>
+            <div class="mb-2">
+              <label for="boxQuantity" class="form-label">Số Lượng</label>
+              <input type="number" class="form-control" id="boxQuantity" min="1" step="1" value="1" required>
+            </div>
+            <div class="mb-2">
+              <label for="boxColor" class="form-label">Màu hộp</label>
+              <input type="color" class="form-control" id="boxColor" value="#ff6dd3" />
+            </div>
+            <div class="mb-2">
+              <label for="boxWeight" class="form-label">Khối lượng (kg)</label>
+              <input type="number" class="form-control" id="boxWeight" min="0" step="0.01" value="1" required>
+            </div>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" id="boxStackable" checked>
+              <label for="boxStackable" class="form-check-label">Có thể xếp chồng lên nhau</label>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-primary" id="confirmAddBoxBtn">Thêm hộp</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
