@@ -78,7 +78,7 @@ export function aggregateBoxes(items) {
         if (!map.has(key)) {
             map.set(key, { ...b, quantity: 0 });
         }
-        map.get(key).quantity += 1;
+        map.get(key).quantity += (b.quantity || 1);
     });
     return Array.from(map.values());
 }
@@ -239,8 +239,8 @@ export function packBoxes(containerWidth, containerHeight, containerLength, boxe
                 x: space.x,
                 y: space.y,
                 z: space.z + orientation.length,
-                width: orientation.width,
-                height: orientation.height,
+                width: space.width,
+                height: space.height,
                 length: space.length - orientation.length
             });
         }
