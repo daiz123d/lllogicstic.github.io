@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.122.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.122.0/examples/jsm/controls/OrbitControls.js';
-import { packMultipleContainers, aggregateBoxes } from './binPacking.js';
+import { packMultipleContainers, aggregateBoxes, containerPresets, findBestContainer } from './binPacking.js';
 
 let scene, camera, renderer, controls;
 let boxes = [];
@@ -31,6 +31,7 @@ function init() {
   initScene();
   addDefaultData();
   renderContainerList();
+  renderPresetList();
   renderContainerSelect();
   renderPreview();
   updateBoxList();
@@ -41,6 +42,7 @@ function bindEvents() {
   document.getElementById('chooseFileBtn').addEventListener('click', () => containerFileInput.click());
   document.getElementById('importContainerBtn').addEventListener('click', () => containerFileInput.click());
   containerFileInput.addEventListener('change', onContainerFileChange);
+  document.getElementById('autoPresetBtn').addEventListener('click', pickBestPreset);
 
   containerSelect.addEventListener('change', (e) => {
     selectedContainerId = e.target.value;
@@ -115,6 +117,7 @@ function initScene() {
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0f172a);
+  scene.fog = new THREE.Fog(0x0f172a, 3000, 9000);
 
   camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 20000);
   camera.position.set(600, 500, 600);
@@ -122,19 +125,34 @@ function initScene() {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setSize(width, height);
   renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.physicallyCorrectLights = true;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   containerElem.appendChild(renderer.domElement);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
 
-  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x111827, 0.8);
+  const hemiLight = new THREE.HemisphereLight(0xcfe7ff, 0x0b1324, 0.7);
   scene.add(hemiLight);
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(200, 400, 300);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+  dirLight.position.set(500, 800, 400);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048;
+  dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.camera.near = 200;
+  dirLight.shadow.camera.far = 4000;
+  dirLight.shadow.camera.left = -1500;
+  dirLight.shadow.camera.right = 1500;
+  dirLight.shadow.camera.top = 1500;
+  dirLight.shadow.camera.bottom = -1500;
   scene.add(dirLight);
 
-  const ambient = new THREE.AmbientLight(0x7090b0, 0.35);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.2);
   scene.add(ambient);
 
   const grid = new THREE.GridHelper(4000, 40, 0x1f2a44, 0x1f2a44);
@@ -266,6 +284,7 @@ function addContainerFromForm() {
   containers.push(newContainer);
   selectedContainerId = newContainer.id;
   renderContainerList();
+  renderPresetList();
   renderContainerSelect();
   renderPreview();
 }
@@ -302,6 +321,16 @@ function renderContainerList() {
         updateContainerField(id, field, q);
         return;
       }
+      if (field === 'maxWeight') {
+        const w = parseFloat(value);
+        if (isNaN(w) || w < 0) {
+          showModal('Lỗi', 'Tải trọng phải >= 0.', 'danger');
+          renderContainerList();
+          return;
+        }
+        updateContainerField(id, field, w);
+        return;
+      }
       if (field !== 'name') {
         value = parseFloat(value);
         if (isNaN(value) || value <= 0) {
@@ -326,6 +355,8 @@ function updateContainerField(id, field, value) {
   if (idx === -1) return;
   if (field === 'quantity') {
     containers[idx][field] = parseInt(value, 10);
+  } else if (field === 'maxWeight') {
+    containers[idx][field] = parseFloat(value) || 0;
   } else if (field === 'name') {
     containers[idx][field] = value;
   } else {
@@ -463,6 +494,60 @@ function expandContainers(baseContainers) {
   return list;
 }
 
+function renderPresetList() {
+  const body = document.getElementById('presetListBody');
+  if (!body) return;
+  body.innerHTML = '';
+  containerPresets.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${p.name}</td>
+      <td>${p.length}</td>
+      <td>${p.width}</td>
+      <td>${p.height}</td>
+      <td>${p.maxWeight || ''}</td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+function pickBestPreset() {
+  if (!boxes.length) {
+    showModal('Lỗi', 'Hãy nhập hộp trước khi chọn container.', 'danger');
+    return;
+  }
+  const aggregated = aggregateBoxes(boxes);
+  const best = findBestContainer(aggregated);
+  if (!best) {
+    showModal('Lỗi', 'Không tìm được container phù hợp.', 'danger');
+    return;
+  }
+  // Tự động tạo container từ preset, thay thế danh sách hiện tại và xếp luôn
+  const newContainer = {
+    id: generateId(),
+    name: best.name,
+    length: best.length,
+    width: best.width,
+    height: best.height,
+    maxWeight: best.maxWeight || 0,
+    quantity: 1
+  };
+  containers = [newContainer];
+  selectedContainerId = newContainer.id;
+
+  document.getElementById('containerLengthInput').value = best.length;
+  document.getElementById('containerWidthInput').value = best.width;
+  document.getElementById('containerHeightInput').value = best.height;
+  document.getElementById('containerWeightInput').value = best.maxWeight || '';
+
+  renderContainerList();
+  renderContainerSelect();
+  renderPreview();
+  packAll(); // Xếp hộp ngay sau khi chọn
+
+  showModal('Đã chọn', `Đã chọn: ${best.name} (${best.length} x ${best.width} x ${best.height} m, tải ${best.maxWeight || 'N/A'} kg) và xếp hộp.`, 'success');
+}
+
 // 3D rendering
 function renderPreview() {
   clearDrawnObjects();
@@ -503,16 +588,19 @@ function drawContainer(container, offset) {
     color: 0x4fb2ff,
     transparent: true,
     opacity: 0.15,
-    roughness: 0.1,
-    metalness: 0.3
+    roughness: 0.08,
+    metalness: 0.35,
+    clearcoat: 0.4,
+    clearcoatRoughness: 0.05
   });
   const mesh = new THREE.Mesh(geom, mat);
   mesh.position.set(offset.x + container.width * scale / 2, container.height * scale / 2, offset.z + container.length * scale / 2);
   mesh.userData.isContainer = true;
+  mesh.receiveShadow = true;
   scene.add(mesh);
 
   const edges = new THREE.EdgesGeometry(geom);
-  const lines = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x7ee0b4, linewidth: 2 }));
+  const lines = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x9de9ff, linewidth: 2 }));
   lines.position.copy(mesh.position);
   lines.userData.isContainer = true;
   scene.add(lines);
@@ -522,7 +610,12 @@ function drawBoxes(packed, offset, opts = { clear: true }) {
   if (opts.clear) clearBoxesOnly();
   packed.forEach(b => {
     const g = new THREE.BoxGeometry(b.width * scale, b.height * scale, b.length * scale);
-    const m = new THREE.MeshStandardMaterial({ color: b.color || randomColor(), roughness: 0.35, metalness: 0.1 });
+    const m = new THREE.MeshStandardMaterial({
+      color: b.color || randomColor(),
+      roughness: 0.32,
+      metalness: 0.35,
+      envMapIntensity: 1.1
+    });
     const mesh = new THREE.Mesh(g, m);
     mesh.position.set(
       offset.x + (b.x + b.width / 2) * scale,
@@ -530,6 +623,8 @@ function drawBoxes(packed, offset, opts = { clear: true }) {
       offset.z + (b.z + b.length / 2) * scale
     );
     mesh.userData.isBox = true;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     scene.add(mesh);
   });
 }
@@ -674,18 +769,18 @@ function exportBoxes() {
     return;
   }
   const data = boxes.map(box => ({
-    'Rộng (m)': box.width,
-    'Cao (m)': box.height,
-    'Dài (m)': box.length,
-    'Số Lượng': box.quantity,
-    'Màu': box.color,
-    'Khối lượng (kg)': box.weight || 0,
-    'Xếp chồng': box.stackable !== false
+    length: box.length,
+    width: box.width,
+    height: box.height,
+    quantity: box.quantity,
+    color: box.color,
+    weight: box.weight || 0,
+    stackable: box.stackable !== false
   }));
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Hop');
-  XLSX.writeFile(wb, 'hop.xlsx');
+  XLSX.utils.book_append_sheet(wb, ws, 'boxes');
+  XLSX.writeFile(wb, 'boxes.xlsx');
   showModal('Thành công', 'Đã xuất danh sách hộp.', 'success');
 }
 

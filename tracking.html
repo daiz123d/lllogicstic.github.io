@@ -3,15 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Theo Dõi Hộp - Box3D Manager</title>
+  <title>Theo Dõi Đơn Hàng - Box3D Manager</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body { background:#0f182a; color:#f5f7ff; }
+    .card { background:#18243a; border:1px solid rgba(255,255,255,0.12); color:#fff; }
+    .card-header { background:rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.12); color:#fff; font-weight:700; }
+    .badge-soft { background:rgba(255,255,255,0.12); color:#dfe7ff; border-radius:999px; padding:4px 10px; font-size:12px; }
+    .timeline { position:relative; padding-left:24px; }
+    .timeline::before { content:''; position:absolute; left:8px; top:0; bottom:0; width:2px; background:#4fb2ff; }
+    .timeline-item { position:relative; padding:10px 0 10px 16px; }
+    .timeline-item::before { content:''; position:absolute; left:-4px; top:14px; width:10px; height:10px; border-radius:50%; background:#4fb2ff; box-shadow:0 0 0 4px rgba(79,178,255,0.2); }
+    .timeline-item small { color:#cdd7f3; }
+    .status-dot { width:12px; height:12px; border-radius:50%; display:inline-block; margin-right:6px; }
+    .table { color:#0f172a; background:#fff; }
+    .table thead { background:#eef3ff; color:#0b1324; font-weight:800; }
+    .pill { padding:6px 12px; border-radius:999px; background:rgba(255,255,255,0.1); color:#dfe7ff; }
+  </style>
 </head>
 <body>
   <div class="d-flex">
     <!-- Sidebar -->
-    <div class="sidebar flex-shrink-0 p-3" style="width: 280px; background: linear-gradient(180deg, #455393, #3f37c9); color: white;">
+    <div class="sidebar flex-shrink-0 p-3" style="width: 280px; background: linear-gradient(180deg, #455393, #3f37c9); color: white; min-height:100vh;">
       <div class="logo">
         <h3><i class="fas fa-boxes me-2"></i>Box3D Manager</h3>
       </div>
@@ -50,92 +65,205 @@
     </div>
     <!-- Main Content -->
     <div class="main-content p-4" style="width:100%;">
-      <h2 class="mb-4"><i class="fas fa-truck me-2"></i>Theo Dõi Hộp</h2>
-      <div class="card mb-4">
-        <div class="card-header">
-          <i class="fas fa-map-marked-alt me-2"></i>Bản đồ theo dõi (OpenStreetMap)
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <div class="pill mb-1">Track & Trace</div>
+          <h2 class="mb-0"><i class="fas fa-truck me-2"></i>Theo dõi đơn hàng</h2>
         </div>
-        <div class="card-body">
-          <div id="map" style="height: 400px; border-radius: 8px;"></div>
-        </div>
-      </div>
-      <div class="card mb-4">
-        <div class="card-header">
-          <i class="fas fa-search-location me-2"></i>Trạng thái vận chuyển
-        </div>
-        <div class="card-body">
-          <table class="table table-bordered table-hover">
-            <thead class="table-primary">
-              <tr>
-                <th>Mã Hộp</th>
-                <th>Vị trí hiện tại</th>
-                <th>Trạng thái</th>
-                <th>Thời gian cập nhật</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>BOX001</td>
-                <td>Kho A</td>
-                <td><span class="badge bg-success">Đã đến</span></td>
-                <td>2025-06-09 09:00</td>
-              </tr>
-              <tr>
-                <td>BOX002</td>
-                <td>Đang vận chuyển</td>
-                <td><span class="badge bg-warning text-dark">Đang giao</span></td>
-                <td>2025-06-09 10:15</td>
-              </tr>
-              <tr>
-                <td>BOX003</td>
-                <td>Kho B</td>
-                <td><span class="badge bg-secondary">Chờ xuất kho</span></td>
-                <td>2025-06-08 17:30</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="d-flex gap-2">
+          <input type="text" id="trackingInput" class="form-control form-control-sm" placeholder="Nhập mã đơn / mã hộp (VD: BOX001)" style="width:240px;">
+          <button class="btn btn-primary btn-sm" id="trackingSearch"><i class="fas fa-search me-1"></i>Tra cứu</button>
         </div>
       </div>
-      <div class="alert alert-info">
-        <i class="fas fa-info-circle"></i> Đây là trang theo dõi trạng thái các hộp trong quá trình vận chuyển. Bạn có thể cập nhật dữ liệu thực tế bằng cách kết nối với hệ thống quản lý vận tải.
+
+      <div class="row g-3">
+        <div class="col-lg-8">
+          <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span><i class="fas fa-map-marked-alt me-2"></i>Hành trình</span>
+              <span class="badge-soft" id="currentStatusBadge">Đang xử lý</span>
+            </div>
+            <div class="card-body">
+              <div id="map" style="height: 320px; border-radius: 12px;"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <i class="fas fa-route me-2"></i>Tiến trình đơn hàng
+            </div>
+            <div class="card-body">
+              <div class="timeline" id="timeline"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card mb-3">
+            <div class="card-header">
+              <i class="fas fa-receipt me-2"></i>Thông tin đơn
+            </div>
+            <div class="card-body">
+              <div class="mb-2"><span class="text-muted small">Mã đơn:</span> <strong id="orderCode">BOX001</strong></div>
+              <div class="mb-2"><span class="text-muted small">Khách:</span> <strong id="customerName">Nguyễn Văn A</strong></div>
+              <div class="mb-2"><span class="text-muted small">Địa chỉ:</span> <span id="orderAddress">Kho A → Kho B</span></div>
+              <div class="d-flex gap-2 flex-wrap mt-3">
+                <span class="badge-soft"><span class="status-dot" style="background:#4fb2ff"></span>Đang giao</span>
+                <span class="badge-soft"><span class="status-dot" style="background:#7ee0b4"></span>Đã lấy hàng</span>
+                <span class="badge-soft"><span class="status-dot" style="background:#fcd34d"></span>Đang trung chuyển</span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <i class="fas fa-box-open me-2"></i>Danh sách kiện
+            </div>
+            <div class="card-body p-0">
+              <table class="table table-bordered mb-0">
+                <thead>
+                  <tr>
+                    <th>Hộp</th>
+                    <th>Trạng thái</th>
+                    <th>Time</th>
+                  </tr>
+                </thead>
+                <tbody id="boxTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Khởi tạo bản đồ Leaflet với OSM
-    document.addEventListener('DOMContentLoaded', function() {
-      var map = L.map('map').setView([21.0285, 105.8542], 6); // Toàn miền Bắc & miền Nam
+    const mockOrders = {
+      'BOX001': {
+        code: 'BOX001',
+        customer: 'Nguyễn Văn A',
+        address: 'Kho A - Hà Nội → Kho B - HCM',
+        status: 'Đang giao',
+        boxes: [
+          { id: 'BOX001', status: 'Đang giao', time: '10:15', lat: 20.98, lng: 105.85 },
+          { id: 'BOX002', status: 'Đã lấy', time: '08:00', lat: 21.03, lng: 105.85 },
+        ],
+        timeline: [
+          { title: 'Đã tạo đơn', time: '07:30', desc: 'Người gửi tạo đơn' },
+          { title: 'Đã lấy hàng', time: '08:00', desc: 'Tài xế đã lấy hàng' },
+          { title: 'Đang trung chuyển', time: '09:00', desc: 'Hàng trên xe trung chuyển' },
+          { title: 'Đang giao', time: '10:15', desc: 'Tài xế đang giao' },
+        ],
+        route: [
+          [21.0285, 105.8542],
+          [20.98, 105.85],
+          [16.0471, 108.2062],
+          [10.8231, 106.6297],
+        ]
+      },
+      'BOX123': {
+        code: 'BOX123',
+        customer: 'Trần Thị B',
+        address: 'Kho C → Kho D',
+        status: 'Đang trung chuyển',
+        boxes: [
+          { id: 'BOX123', status: 'Đang trung chuyển', time: '09:40', lat: 16.05, lng: 108.2 },
+        ],
+        timeline: [
+          { title: 'Đã tạo đơn', time: '08:10', desc: 'Người gửi tạo đơn' },
+          { title: 'Đã lấy hàng', time: '08:45', desc: 'Tài xế đã lấy hàng' },
+          { title: 'Đang trung chuyển', time: '09:40', desc: 'Xe đang di chuyển' },
+        ],
+        route: [
+          [21.03, 105.85],
+          [16.05, 108.2],
+          [10.8, 106.6],
+        ]
+      }
+    };
+
+    let map, routeLine;
+    const markers = {};
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      loadOrder('BOX001');
+      document.getElementById('trackingSearch').addEventListener('click', () => {
+        const code = document.getElementById('trackingInput').value.trim().toUpperCase();
+        loadOrder(code || 'BOX001');
+      });
+      document.getElementById('trackingInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('trackingSearch').click();
+      });
+    });
+
+    function initMap() {
+      map = L.map('map').setView([21.0285, 105.8542], 6);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap'
       }).addTo(map);
+    }
 
-      // Các marker cửa khẩu lớn
-      L.marker([21.5211, 106.7256]).addTo(map)
-        .bindPopup('Cửa khẩu Hữu Nghị (Lạng Sơn)');
-      L.marker([22.5056, 103.9632]).addTo(map)
-        .bindPopup('Cửa khẩu Lào Cai');
-      L.marker([22.8537, 106.7186]).addTo(map)
-        .bindPopup('Cửa khẩu Móng Cái');
-      L.marker([22.6667, 106.2500]).addTo(map)
-        .bindPopup('Cửa khẩu Tân Thanh (Lạng Sơn)');
-      L.marker([22.4081, 104.2517]).addTo(map)
-        .bindPopup('Cửa khẩu Thanh Thủy (Hà Giang)');
-      L.marker([21.3972, 103.0167]).addTo(map)
-        .bindPopup('Cửa khẩu Tây Trang (Điện Biên)');
-      L.marker([14.7041, 107.6887]).addTo(map)
-        .bindPopup('Cửa khẩu Bờ Y (Kon Tum)');
-      L.marker([10.9804, 106.6527]).addTo(map)
-        .bindPopup('Cửa khẩu Mộc Bài (Tây Ninh)');
-      L.marker([10.6068, 104.9782]).addTo(map)
-        .bindPopup('Cửa khẩu Hà Tiên (Kiên Giang)');
-      L.marker([10.8442, 106.5556]).addTo(map)
-        .bindPopup('Cửa khẩu Xa Mát (Tây Ninh)');
-      L.marker([13.8031, 107.5831]).addTo(map)
-        .bindPopup('Cửa khẩu Lệ Thanh (Gia Lai)');
-    });
+    function loadOrder(code) {
+      const data = mockOrders[code];
+      if (!data) {
+        alert('Không tìm thấy đơn: ' + code);
+        return;
+      }
+      document.getElementById('orderCode').textContent = data.code;
+      document.getElementById('customerName').textContent = data.customer;
+      document.getElementById('orderAddress').textContent = data.address;
+      document.getElementById('currentStatusBadge').textContent = data.status;
+
+      renderBoxes(data.boxes);
+      renderTimeline(data.timeline);
+      renderRoute(data.route, data.boxes);
+    }
+
+    function renderBoxes(boxes) {
+      const body = document.getElementById('boxTableBody');
+      body.innerHTML = '';
+      boxes.forEach(b => {
+        const tr = document.createElement('tr');
+        const statusClass = b.status.includes('giao') ? 'bg-warning text-dark' : 'bg-success';
+        tr.innerHTML = `
+          <td>${b.id}</td>
+          <td><span class="badge ${statusClass}">${b.status}</span></td>
+          <td>${b.time || ''}</td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    function renderTimeline(steps) {
+      const tl = document.getElementById('timeline');
+      tl.innerHTML = '';
+      steps.forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'timeline-item';
+        div.innerHTML = `
+          <div class="fw-bold">${s.title}</div>
+          <small>${s.time} - ${s.desc || ''}</small>
+        `;
+        tl.appendChild(div);
+      });
+    }
+
+    function renderRoute(routePoints, boxes) {
+      if (!routePoints || !routePoints.length) return;
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.polyline(routePoints, { color: '#4fb2ff', weight: 4, opacity: 0.8 }).addTo(map);
+      map.fitBounds(routeLine.getBounds(), { padding: [20, 20] });
+
+      Object.values(markers).forEach(m => map.removeLayer(m));
+      Object.keys(markers).forEach(k => delete markers[k]);
+
+      (boxes || []).forEach(b => {
+        if (b.lat && b.lng) {
+          markers[b.id] = L.marker([b.lat, b.lng]).addTo(map).bindPopup(`${b.id}: ${b.status}`);
+        }
+      });
+    }
   </script>
 </body>
 </html>

@@ -1,44 +1,55 @@
-export function findBestContainer(boxes) {
-    const containers = [
-        { name: '1.25T (VN)', width: 1.6, height: 1.6, length: 3.1, maxWeight: 1000 },
-        { name: '2.5T (VN)', width: 1.7, height: 1.65, length: 4.2, maxWeight: 1800 },
-        { name: '3.5T (VN)', width: 1.8, height: 1.8, length: 4.7, maxWeight: 2500 },
-        { name: '5T (VN)', width: 2.1, height: 2.0, length: 6.0, maxWeight: 3500 },
-        { name: '8T (VN)', width: 2.33, height: 2.2, length: 7.4, maxWeight: 5000 },
-        { name: '10T (VN)', width: 2.4, height: 2.35, length: 9.6, maxWeight: 8500 },
-        { name: '45HQ (VN)', width: 2.35, height: 2.68, length: 13.5, maxWeight: 30000 },
-        { name: 'Rào (VN)', width: 2.35, height: 2.4, length: 16.0, maxWeight: 40000 },
-        { name: 'Sàn (VN)', width: 2.5, height: 2.7, length: 15.0, maxWeight: 45000 },
-        { name: 'Fooc 15m (VN)', width: 3.2, height: 3.2, length: 14.0, maxWeight: 50000 },
-        { name: 'Fooc 17m (VN)', width: 3.2, height: 3.2, length: 17.5, maxWeight: 60000 },
-        { name: 'Fooc 18m5 (VN)', width: 3.2, height: 3.2, length: 18.5, maxWeight: 65000 },
-        { name: 'Fooc 19m5 (VN)', width: 3.5, height: 3.2, length: 19.5, maxWeight: 70000 },
-        { name: '3T (TQ)', width: 2.3, height: 1.8, length: 4.2, maxWeight: 2000 },
-        { name: '5T (TQ)', width: 2.4, height: 2.4, length: 7.6, maxWeight: 3500 },
-        { name: '10T (TQ)', width: 2.4, height: 2.4, length: 9.6, maxWeight: 8500 },
-        { name: '45HQ (TQ)', width: 2.35, height: 2.68, length: 13.5, maxWeight: 30000 },
-        { name: '53HQ (TQ)', width: 2.6, height: 2.8, length: 16.5, maxWeight: 40000 },
-        { name: '4.2m bạt (TQ)', width: 2.3, height: 2.2, length: 4.2, maxWeight: 2000 },
-        { name: '7.6m bạt (TQ)', width: 2.4, height: 2.8, length: 7.6, maxWeight: 3500 },
-        { name: '9.6m bạt (TQ)', width: 2.4, height: 2.8, length: 9.6, maxWeight: 4500 },
-        { name: '13m bạt (TQ)', width: 2.4, height: 2.8, length: 13.0, maxWeight: 6000 },
-        { name: 'Sàn 13m (TQ)', width: 3.0, height: 3.0, length: 13.75, maxWeight: 7000 },
-        { name: 'Sàn 17m5 (TQ)', width: 3.0, height: 3.0, length: 17.5, maxWeight: 8000 },
-    ];
+export const containerPresets = [
+    { name: '1.25T (VN)', width: 1.6, height: 1.6, length: 3.1, maxWeight: 1000 },
+    { name: '2.5T (VN)', width: 1.7, height: 1.65, length: 4.2, maxWeight: 1800 },
+    { name: '3.5T (VN)', width: 1.8, height: 1.8, length: 4.7, maxWeight: 3100 },
+    { name: '5T (VN)', width: 2.1, height: 2.0, length: 5.6, maxWeight: 4800 },
+    { name: '8T (VN)', width: 2.25, height: 2.2, length: 6.9, maxWeight: 7400 },
+    { name: '10T (VN)', width: 2.3, height: 2.33, length: 9.6, maxWeight: 8500 },
+    { name: '45HQ (VN)', width: 2.35, height: 2.68, length: 13.5, maxWeight: 30000 },
+    { name: 'Rào (VN)', width: 2.35, height: 2.4, length: 15.0, maxWeight: 30000 },
+    { name: 'Sàn (VN)', width: 2.5, height: 2.7, length: 15.0, maxWeight: 30000 },
+    { name: 'Fooc 15m (VN)', width: 3.2, height: 3.2, length: 14.0, maxWeight: 30000 },
+    { name: 'Fooc 17m (VN)', width: 3.2, height: 3.2, length: 17.5, maxWeight: 30000 },
+    { name: 'Fooc 18m5 (VN)', width: 3.2, height: 3.2, length: 18.5, maxWeight: 30000 },
+    { name: 'Fooc 19m5 (VN)', width: 3.5, height: 3.2, length: 19.5, maxWeight: 30000 },
+    { name: '3T (TQ)', width: 2.3, height: 1.8, length: 4.2, maxWeight: 3000 },
+    { name: '5T (TQ)', width: 2.4, height: 2.4, length: 7.6, maxWeight: 5000 },
+    { name: '10T (TQ)', width: 2.4, height: 2.4, length: 9.6, maxWeight: 9500 },
+    { name: '45HQ (TQ)', width: 2.35, height: 2.68, length: 13.5, maxWeight: 30000 },
+    { name: '53HQ (TQ)', width: 2.6, height: 2.8, length: 16.5, maxWeight: 30000 },
+    { name: '4.2m bạt (TQ)', width: 2.3, height: 2.2, length: 4.2, maxWeight: 3000 },
+    { name: '7.6m bạt (TQ)', width: 2.4, height: 2.8, length: 7.6, maxWeight: 5000 },
+    { name: '9.6m bạt (TQ)', width: 2.4, height: 2.8, length: 9.6, maxWeight: 9500 },
+    { name: '13m bạt (TQ)', width: 2.4, height: 2.8, length: 13.0, maxWeight: 30000 },
+    { name: 'Sàn 13m (TQ)', width: 3.0, height: 3.0, length: 13.75, maxWeight: 30000 },
+    { name: 'Sàn 17m5 (TQ)', width: 3.0, height: 3.0, length: 17.5, maxWeight: 30000 },
+];
 
-    let totalWeight = 0;
-    boxes.forEach(box => {
-        totalWeight += (box.weight || 0) * (box.quantity || 1);
+export function findBestContainer(boxes) {
+    const presets = [...containerPresets].sort((a, b) =>
+        (a.length * a.width * a.height) - (b.length * b.width * b.height)
+    );
+
+    const aggregated = aggregateBoxes(boxes);
+    let best = null;
+
+    presets.forEach(c => {
+        const result = packBoxes(c.width, c.height, c.length, aggregated, c.maxWeight || 0);
+        const leftover = result.unpacked.length;
+        const volume = c.length * c.width * c.height;
+        const packedCount = result.packed.length;
+        if (!best ||
+            leftover < best.leftover ||
+            (leftover === best.leftover && packedCount > best.packedCount) ||
+            (leftover === best.leftover && packedCount === best.packedCount && volume < best.volume)
+        ) {
+            best = { container: c, result, leftover, packedCount, volume };
+        }
     });
 
-    for (const c of containers) {
-        if (c.maxWeight && totalWeight > c.maxWeight) continue;
-        const result = packBoxes(c.width, c.height, c.length, boxes, c.maxWeight || 0);
-        if (result.unpacked.length === 0) {
-            return { ...c, packed: result.packed, totalWeight };
-        }
-    }
-    return null;
+    if (!best) return null;
+    const totalWeight = best.result.packed.reduce((s, b) => s + (b.weight || 0), 0);
+    return { ...best.container, packed: best.result.packed, totalWeight, leftover: best.leftover };
 }
 
 // Gom hộp đơn lẻ cùng đặc tính thành quantity
