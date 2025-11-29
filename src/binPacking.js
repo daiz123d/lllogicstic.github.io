@@ -30,7 +30,7 @@ export function findBestContainer(boxes) {
         (a.length * a.width * a.height) - (b.length * b.width * b.height)
     );
 
-    const aggregated = aggregateBoxes(boxes);
+    const aggregated = boxes; // boxes đã được gom với quantity
     let best = null;
 
     presets.forEach(c => {
@@ -38,12 +38,19 @@ export function findBestContainer(boxes) {
         const leftover = result.unpacked.length;
         const volume = c.length * c.width * c.height;
         const packedCount = result.packed.length;
+        const totalBoxes = aggregated.reduce((s, b) => s + (b.quantity || 0), 0);
+        const allPacked = leftover === 0 && packedCount >= totalBoxes;
+
+        // Ưu tiên: xếp hết hộp -> thể tích nhỏ nhất.
+        // Nếu không xếp hết: ít dư nhất -> packedCount nhiều nhất -> thể tích nhỏ nhất.
         if (!best ||
-            leftover < best.leftover ||
-            (leftover === best.leftover && packedCount > best.packedCount) ||
-            (leftover === best.leftover && packedCount === best.packedCount && volume < best.volume)
+            (allPacked && !best.allPacked) ||
+            (allPacked && best.allPacked && volume < best.volume) ||
+            (!allPacked && !best.allPacked && leftover < best.leftover) ||
+            (!allPacked && !best.allPacked && leftover === best.leftover && packedCount > best.packedCount) ||
+            (!allPacked && !best.allPacked && leftover === best.leftover && packedCount === best.packedCount && volume < best.volume)
         ) {
-            best = { container: c, result, leftover, packedCount, volume };
+            best = { container: c, result, leftover, packedCount, volume, allPacked };
         }
     });
 
