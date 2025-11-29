@@ -30,8 +30,9 @@ export function findBestContainer(boxes) {
         (a.length * a.width * a.height) - (b.length * b.width * b.height)
     );
 
-    const aggregated = boxes; // boxes đã được gom với quantity
-    let best = null;
+    const aggregated = boxes; // boxes đã chứa quantity
+    let bestZero = null;
+    let bestFallback = null;
 
     presets.forEach(c => {
         const result = packBoxes(c.width, c.height, c.length, aggregated, c.maxWeight || 0);
@@ -41,22 +42,32 @@ export function findBestContainer(boxes) {
         const totalBoxes = aggregated.reduce((s, b) => s + (b.quantity || 0), 0);
         const allPacked = leftover === 0 && packedCount >= totalBoxes;
 
-        // Ưu tiên: xếp hết hộp -> thể tích nhỏ nhất.
-        // Nếu không xếp hết: ít dư nhất -> packedCount nhiều nhất -> thể tích nhỏ nhất.
-        if (!best ||
-            (allPacked && !best.allPacked) ||
-            (allPacked && best.allPacked && volume < best.volume) ||
-            (!allPacked && !best.allPacked && leftover < best.leftover) ||
-            (!allPacked && !best.allPacked && leftover === best.leftover && packedCount > best.packedCount) ||
-            (!allPacked && !best.allPacked && leftover === best.leftover && packedCount === best.packedCount && volume < best.volume)
+        if (allPacked) {
+            if (!bestZero || volume < bestZero.volume) {
+                bestZero = { container: c, result, volume };
+            }
+            return;
+        }
+
+        // fallback: ít dư nhất -> nhiều hộp xếp được -> thể tích nhỏ
+        if (!bestFallback ||
+            leftover < bestFallback.leftover ||
+            (leftover === bestFallback.leftover && packedCount > bestFallback.packedCount) ||
+            (leftover === bestFallback.leftover && packedCount === bestFallback.packedCount && volume < bestFallback.volume)
         ) {
-            best = { container: c, result, leftover, packedCount, volume, allPacked };
+            bestFallback = { container: c, result, leftover, packedCount, volume };
         }
     });
 
-    if (!best) return null;
-    const totalWeight = best.result.packed.reduce((s, b) => s + (b.weight || 0), 0);
-    return { ...best.container, packed: best.result.packed, totalWeight, leftover: best.leftover };
+    const chosen = bestZero || bestFallback;
+    if (!chosen) return null;
+    const totalWeight = chosen.result.packed.reduce((s, b) => s + (b.weight || 0), 0);
+    return {
+        ...chosen.container,
+        packed: chosen.result.packed,
+        totalWeight,
+        leftover: chosen.result.unpacked ? chosen.result.unpacked.length : (bestZero ? 0 : chosen.leftover)
+    };
 }
 
 // Gom hộp đơn lẻ cùng đặc tính thành quantity
