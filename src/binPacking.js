@@ -78,7 +78,8 @@ export function aggregateBoxes(items) {
         if (!map.has(key)) {
             map.set(key, { ...b, quantity: 0 });
         }
-        map.get(key).quantity += (b.quantity || 1);
+        const qty = Number(b.quantity || 1);
+        map.get(key).quantity += (!Number.isFinite(qty) || qty <= 0 ? 1 : qty);
     });
     return Array.from(map.values());
 }
