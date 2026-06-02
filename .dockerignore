@@ -1,0 +1,6 @@
+.git
+.gitlab-ci.yml
+argocd
+k8s
+tests
+*.md
