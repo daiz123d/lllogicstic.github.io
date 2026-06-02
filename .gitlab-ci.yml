@@ -2,7 +2,8 @@ stages:
   - build
 
 variables:
-  IMAGE_NAME: "172.16.4.12:8888/dai.ta/tesst"
+  REGISTRY_HOST: "172.16.4.12:5050"
+  IMAGE_NAME: "172.16.4.12:5050/dai.ta/tesst"
   IMAGE_TAG: "latest"
 
 build-image:
@@ -14,7 +15,7 @@ build-image:
     entrypoint: [""]
   script:
     - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"172.16.4.12:8888\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor --context "$CI_PROJECT_DIR" --dockerfile "$CI_PROJECT_DIR/Dockerfile" --destination "$IMAGE_NAME:$IMAGE_TAG" --insecure --skip-tls-verify
+    - echo "{\"auths\":{\"$REGISTRY_HOST\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context "$CI_PROJECT_DIR" --dockerfile "$CI_PROJECT_DIR/Dockerfile" --destination "$IMAGE_NAME:$IMAGE_TAG" --insecure --skip-tls-verify --skip-tls-verify-pull
   only:
     - main
