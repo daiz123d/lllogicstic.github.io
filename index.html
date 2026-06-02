@@ -37,18 +37,74 @@
       <div class="hero">
         <div>
           <div class="pill mb-2">Logistics 3D realtime</div>
-          <h1>Trình xếp hộp đa container</h1>
+          <h1>Bảng điều phối xếp hàng 3D</h1>
           <div class="d-flex gap-2 flex-wrap mt-2">
-            <span class="tag"><i class="fas fa-cube"></i> 3D nâng cấp</span>
+            <span class="tag"><i class="fas fa-cube"></i> Không gian 3D</span>
             <span class="tag"><i class="fas fa-layer-group"></i> Xếp nhiều container</span>
-            <span class="tag"><i class="fas fa-file-import"></i> Nhập file container</span>
+            <span class="tag"><i class="fas fa-file-import"></i> CSV / JSON / XLSX</span>
           </div>
         </div>
-        <div class="d-flex gap-2 flex-wrap">
+        <div class="hero-actions">
           <button class="btn btn-outline-light" id="importContainerBtn"><i class="fas fa-upload me-1"></i>Tải file container</button>
           <input type="file" id="containerFileInput" accept=".csv,.json,.xlsx,.xls" hidden />
           <button class="btn btn-primary" id="submitBtn"><i class="fas fa-boxes me-1"></i>Xếp hộp</button>
           <button class="btn btn-outline-light" id="resetBtn"><i class="fas fa-rotate me-1"></i>Đặt lại</button>
+        </div>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-icon accent-blue"><i class="fas fa-truck"></i></span>
+          <div>
+            <small>Container khả dụng</small>
+            <strong id="statContainers">0</strong>
+          </div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon accent-green"><i class="fas fa-boxes"></i></span>
+          <div>
+            <small>Tổng số hộp</small>
+            <strong id="statBoxes">0</strong>
+          </div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon accent-pink"><i class="fas fa-check-double"></i></span>
+          <div>
+            <small>Đã xếp</small>
+            <strong id="statPacked">0</strong>
+          </div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon accent-yellow"><i class="fas fa-exclamation-triangle"></i></span>
+          <div>
+            <small>Chưa xếp</small>
+            <strong id="statLeftover">0</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="card glass-card strategy-card">
+        <div class="card-header"><i class="fas fa-sliders-h me-2"></i>Tùy chọn chiến lược xếp</div>
+        <div class="card-body">
+          <div class="strategy-grid">
+            <div>
+              <label class="form-label" for="packingStrategy">Chiến lược</label>
+              <select id="packingStrategy" class="form-select form-select-sm">
+                <option value="minContainers">Ưu tiên tiết kiệm số container</option>
+                <option value="maxFill">Ưu tiên độ đầy cao nhất</option>
+                <option value="heavyBottom">Ưu tiên hộp nặng ở dưới</option>
+                <option value="inputOrder">Ưu tiên theo thứ tự nhập</option>
+              </select>
+            </div>
+            <label class="toggle-row">
+              <input type="checkbox" id="allowRotationInput" checked>
+              <span>Cho phép xoay hộp</span>
+            </label>
+            <div class="strategy-hint">
+              <i class="fas fa-circle-info"></i>
+              <span>Đổi chiến lược rồi bấm “Xếp hộp” để so sánh kết quả.</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -62,21 +118,82 @@
             </div>
           </div>
           <div class="card-body">
-            <div class="controls-stack d-flex justify-content-center mb-3 gap-2">
-              <button type="button" id="stepPrevBtn" class="btn btn-outline-light btn-sm"><i class="fas fa-step-backward"></i></button>
-              <button type="button" id="stepPauseBtn" class="btn btn-outline-light btn-sm"><i class="fas fa-pause"></i></button>
-              <button type="button" id="stepNextBtn" class="btn btn-outline-light btn-sm"><i class="fas fa-step-forward"></i></button>
+            <div class="view-tabs mb-3">
+              <button type="button" class="btn btn-primary btn-sm" data-view-mode="3d"><i class="fas fa-cube me-1"></i>3D</button>
+              <button type="button" class="btn btn-outline-light btn-sm" data-view-mode="top"><i class="fas fa-border-all me-1"></i>Mặt bằng</button>
+              <button type="button" class="btn btn-outline-light btn-sm" data-view-mode="side"><i class="fas fa-arrows-alt-h me-1"></i>Mặt bên</button>
+              <button type="button" class="btn btn-outline-light btn-sm" data-view-mode="front"><i class="fas fa-arrows-alt-v me-1"></i>Mặt trước</button>
+            </div>
+            <div class="controls-stack mb-3">
+              <div class="timeline-buttons">
+                <button type="button" id="stepPrevBtn" class="btn btn-outline-light btn-sm" title="Lùi một hộp"><i class="fas fa-step-backward"></i></button>
+                <button type="button" id="stepPlayBtn" class="btn btn-primary btn-sm" title="Phát tự động"><i class="fas fa-play"></i></button>
+                <button type="button" id="stepNextBtn" class="btn btn-outline-light btn-sm" title="Tới một hộp"><i class="fas fa-step-forward"></i></button>
+              </div>
+              <div class="timeline-main">
+                <input type="range" id="stepSlider" min="0" max="0" value="0" step="1">
+                <span id="stepLabel" class="timeline-label">0 / 0</span>
+              </div>
+              <select id="stepSpeedSelect" class="form-select form-select-sm timeline-speed" title="Tốc độ phát">
+                <option value="1200">Chậm</option>
+                <option value="700" selected>Vừa</option>
+                <option value="350">Nhanh</option>
+              </select>
             </div>
             <div id="threeD-container" class="threeD-container"></div>
+            <canvas id="planCanvas" class="plan-canvas" hidden></canvas>
+            <div id="selectedBoxInfo" class="selected-box-info mt-3">
+              <div class="fw-bold"><i class="fas fa-hand-pointer me-1"></i>Thông tin hộp</div>
+              <div class="text-muted small">Click một hộp trong 3D hoặc chọn một dòng trong bảng để xem chi tiết.</div>
+            </div>
+            <div id="manualEditPanel" class="manual-edit-panel mt-3">
+              <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <div class="fw-bold"><i class="fas fa-pen-ruler me-1"></i>Chỉnh tay vị trí / xoay</div>
+                <span id="manualEditStatus" class="manual-status muted">Chưa chọn hộp</span>
+              </div>
+              <div class="manual-grid mt-2">
+                <div>
+                  <label class="form-label" for="manualX">X</label>
+                  <input type="number" id="manualX" class="form-control form-control-sm" step="0.1" disabled>
+                </div>
+                <div>
+                  <label class="form-label" for="manualY">Y</label>
+                  <input type="number" id="manualY" class="form-control form-control-sm" step="0.1" disabled>
+                </div>
+                <div>
+                  <label class="form-label" for="manualZ">Z</label>
+                  <input type="number" id="manualZ" class="form-control form-control-sm" step="0.1" disabled>
+                </div>
+                <div>
+                  <label class="form-label" for="manualLength">Dài</label>
+                  <input type="number" id="manualLength" class="form-control form-control-sm" step="0.1" disabled>
+                </div>
+                <div>
+                  <label class="form-label" for="manualWidth">Rộng</label>
+                  <input type="number" id="manualWidth" class="form-control form-control-sm" step="0.1" disabled>
+                </div>
+                <div>
+                  <label class="form-label" for="manualHeight">Cao</label>
+                  <input type="number" id="manualHeight" class="form-control form-control-sm" step="0.1" disabled>
+                </div>
+              </div>
+              <div class="manual-actions mt-2">
+                <button type="button" id="rotateLengthWidthBtn" class="btn btn-outline-light btn-sm" disabled><i class="fas fa-rotate me-1"></i>D/R</button>
+                <button type="button" id="rotateLengthHeightBtn" class="btn btn-outline-light btn-sm" disabled><i class="fas fa-rotate me-1"></i>D/C</button>
+                <button type="button" id="rotateWidthHeightBtn" class="btn btn-outline-light btn-sm" disabled><i class="fas fa-rotate me-1"></i>R/C</button>
+                <button type="button" id="validateManualBtn" class="btn btn-outline-light btn-sm" disabled><i class="fas fa-shield-check me-1"></i>Kiểm tra</button>
+                <button type="button" id="applyManualBtn" class="btn btn-primary btn-sm" disabled><i class="fas fa-check me-1"></i>Áp dụng</button>
+              </div>
+            </div>
             <div class="table-responsive mt-3">
               <table class="table table-bordered table-sm" id="packedBoxesTable">
                 <thead>
                   <tr>
                     <th>#</th>
                     <th>Container</th>
+                    <th>Dài</th>
                     <th>Rộng</th>
                     <th>Cao</th>
-                    <th>Dài</th>
                     <th>Vị trí (x,y,z)</th>
                   </tr>
                 </thead>
@@ -98,31 +215,31 @@
           </div>
           <div class="card-body">
             <div class="row g-2">
-              <div class="col-md-4">
+              <div class="col-12">
                 <label class="form-label">Tên/nhãn</label>
                 <input type="text" id="containerNameInput" class="form-control form-control-sm" placeholder="Container 1" />
               </div>
-              <div class="col-md-2">
+              <div class="col-4">
                 <label class="form-label">Dài (m)</label>
                 <input type="number" id="containerLengthInput" class="form-control form-control-sm" min="0.1" step="0.1" value="4" />
               </div>
-              <div class="col-md-2">
+              <div class="col-4">
                 <label class="form-label">Rộng (m)</label>
                 <input type="number" id="containerWidthInput" class="form-control form-control-sm" min="0.1" step="0.1" value="5" />
               </div>
-              <div class="col-md-2">
+              <div class="col-4">
                 <label class="form-label">Cao (m)</label>
                 <input type="number" id="containerHeightInput" class="form-control form-control-sm" min="0.1" step="0.1" value="3" />
               </div>
-              <div class="col-md-2">
+              <div class="col-6">
                 <label class="form-label">Tải trọng (kg)</label>
                 <input type="number" id="containerWeightInput" class="form-control form-control-sm" min="0" step="1" placeholder="VD: 5000" />
               </div>
-              <div class="col-md-1">
+              <div class="col-3">
                 <label class="form-label">SL</label>
                 <input type="number" id="containerQuantityInput" class="form-control form-control-sm" min="1" step="1" value="1" />
               </div>
-              <div class="col-md-1 d-flex align-items-end">
+              <div class="col-3 d-flex align-items-end">
                 <button class="btn btn-primary btn-sm w-100" id="addContainerBtn"><i class="fas fa-plus"></i></button>
               </div>
             </div>
@@ -229,7 +346,35 @@
         </div>
       </div>
 
-      <div class="card glass-card mb-0">
+      <div class="grid-col-2">
+        <div class="card glass-card">
+          <div class="card-header"><i class="fas fa-lightbulb me-2"></i>Cảnh báo tối ưu</div>
+          <div class="card-body" id="optimizationInsights">
+            <div class="text-muted">Bấm “Xếp hộp” để xem gợi ý tối ưu.</div>
+          </div>
+        </div>
+        <div class="card glass-card">
+          <div class="card-header"><i class="fas fa-list-check me-2"></i>Thứ tự xếp hàng</div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-bordered table-sm" id="loadingOrderTable">
+                <thead>
+                  <tr>
+                    <th>Bước</th>
+                    <th>Hộp</th>
+                    <th>Container</th>
+                    <th>Kích thước</th>
+                    <th>Vị trí</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card glass-card mb-0 process-card">
         <div class="card-header"><i class="fas fa-list-ol me-2"></i>Quy trình xếp hộp</div>
         <div class="card-body">
           <div class="d-flex gap-3 flex-wrap">

@@ -1,16 +1,23 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.122.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.122.0/examples/jsm/controls/OrbitControls.js';
-import { packMultipleContainers, aggregateBoxes, containerPresets, findBestContainer } from './binPacking.js';
+import { packMultipleContainers, aggregateBoxes, containerPresets, findBestContainer, validateManualPlacement } from './binPacking.js';
 
-let scene, camera, renderer, controls;
+let scene, camera, renderer, controls, raycaster, pointer;
 let boxes = [];
 let containers = []; // base container definitions (with quantity)
 let packResults = new Map(); // containerId -> { container, packed, unpacked }
 let selectedContainerId = null;
+let lastLeftoverCount = 0;
+let lastPackData = null;
 
 let stepIndex = 0;
 let stepPacked = [];
 let stepContainerId = null;
+let stepTimer = null;
+let activeViewMode = '3d';
+let selectedBoxKey = null;
+let selectedBoxData = null;
+let boxMeshes = new Map();
 
 const scale = 100;
 
@@ -23,6 +30,35 @@ const resultDiv = document.getElementById('result');
 const containerTypeInfo = document.getElementById('containerTypeInfo');
 const packedTableBody = document.querySelector('#packedBoxesTable tbody');
 const containerResultsDiv = document.getElementById('containerResults');
+const statContainers = document.getElementById('statContainers');
+const statBoxes = document.getElementById('statBoxes');
+const statPacked = document.getElementById('statPacked');
+const statLeftover = document.getElementById('statLeftover');
+const packingStrategySelect = document.getElementById('packingStrategy');
+const allowRotationInput = document.getElementById('allowRotationInput');
+const stepPlayBtn = document.getElementById('stepPlayBtn');
+const stepSlider = document.getElementById('stepSlider');
+const stepLabel = document.getElementById('stepLabel');
+const stepSpeedSelect = document.getElementById('stepSpeedSelect');
+const planCanvas = document.getElementById('planCanvas');
+const selectedBoxInfo = document.getElementById('selectedBoxInfo');
+const optimizationInsights = document.getElementById('optimizationInsights');
+const loadingOrderTableBody = document.querySelector('#loadingOrderTable tbody');
+const manualEditPanel = document.getElementById('manualEditPanel');
+const manualEditStatus = document.getElementById('manualEditStatus');
+const manualInputs = {
+  x: document.getElementById('manualX'),
+  y: document.getElementById('manualY'),
+  z: document.getElementById('manualZ'),
+  length: document.getElementById('manualLength'),
+  width: document.getElementById('manualWidth'),
+  height: document.getElementById('manualHeight')
+};
+const rotateLengthWidthBtn = document.getElementById('rotateLengthWidthBtn');
+const rotateLengthHeightBtn = document.getElementById('rotateLengthHeightBtn');
+const rotateWidthHeightBtn = document.getElementById('rotateWidthHeightBtn');
+const validateManualBtn = document.getElementById('validateManualBtn');
+const applyManualBtn = document.getElementById('applyManualBtn');
 
 init();
 
@@ -35,6 +71,8 @@ function init() {
   renderContainerSelect();
   renderPreview();
   updateBoxList();
+  setManualControlsEnabled(false);
+  updateDashboardStats();
 }
 
 function bindEvents() {
@@ -71,6 +109,7 @@ function bindEvents() {
       return;
     }
     boxes.push({ width, height, length, quantity, color, weight, stackable });
+    clearPackingResults();
     updateBoxList();
     renderPreview();
     bootstrap.Modal.getInstance(document.getElementById('addBoxModal')).hide();
@@ -86,7 +125,27 @@ function bindEvents() {
 
   document.getElementById('stepNextBtn').addEventListener('click', stepNext);
   document.getElementById('stepPrevBtn').addEventListener('click', stepPrev);
-  document.getElementById('stepPauseBtn').addEventListener('click', stepPause);
+  stepPlayBtn.addEventListener('click', toggleStepPlay);
+  stepSlider.addEventListener('input', () => applyStepIndex(parseInt(stepSlider.value, 10) || 0));
+  stepSpeedSelect.addEventListener('change', () => {
+    if (stepTimer) {
+      stepPause();
+      toggleStepPlay();
+    }
+  });
+  packingStrategySelect.addEventListener('change', clearPackingResults);
+  allowRotationInput.addEventListener('change', clearPackingResults);
+  document.querySelectorAll('[data-view-mode]').forEach(btn => {
+    btn.addEventListener('click', () => switchViewMode(btn.dataset.viewMode));
+  });
+  rotateLengthWidthBtn.addEventListener('click', () => rotateManualDimensions('length', 'width'));
+  rotateLengthHeightBtn.addEventListener('click', () => rotateManualDimensions('length', 'height'));
+  rotateWidthHeightBtn.addEventListener('click', () => rotateManualDimensions('width', 'height'));
+  validateManualBtn.addEventListener('click', () => validateManualEdit({ showSuccess: true }));
+  applyManualBtn.addEventListener('click', applyManualEdit);
+  Object.values(manualInputs).forEach(input => {
+    input.addEventListener('input', () => setManualStatus('muted', 'Chưa kiểm tra'));
+  });
 }
 
 function addDefaultData() {
@@ -136,6 +195,9 @@ function initScene() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
+  raycaster = new THREE.Raycaster();
+  pointer = new THREE.Vector2();
+  renderer.domElement.addEventListener('click', onCanvasClick);
 
   const hemiLight = new THREE.HemisphereLight(0xcfe7ff, 0x0b1324, 0.7);
   scene.add(hemiLight);
@@ -200,6 +262,8 @@ function packAll() {
   stepPause();
   resetStepState();
   packResults = new Map();
+  selectedBoxKey = null;
+  selectedBoxData = null;
 
   const expanded = expandContainers(containers);
   if (!expanded.length) {
@@ -207,13 +271,18 @@ function packAll() {
     return;
   }
 
-  const data = packMultipleContainers(expanded, boxes);
+  const packingOptions = getPackingOptions();
+  const data = packMultipleContainers(expanded, boxes, packingOptions);
+  lastPackData = data;
   const leftoverGrouped = aggregateBoxes(data.leftover);
+  lastLeftoverCount = data.leftover.length;
   data.results.forEach(r => {
     packResults.set(r.container.id, { container: r.container, packed: r.packed, unpacked: [] });
   });
 
   renderResults(data.results, leftoverGrouped);
+  renderOptimizationInsights(data.results, data.leftover, packingOptions);
+  updateLoadingOrderTable(getAllPackedRows());
 
   if (expanded.length > 1) {
     selectedContainerId = '__all__';
@@ -223,6 +292,15 @@ function packAll() {
   renderContainerSelect();
   renderPreview();
   updatePackedBoxTable(getPackedForSelected());
+  updateStepControls();
+  updateDashboardStats();
+}
+
+function getPackingOptions() {
+  return {
+    strategy: packingStrategySelect.value || 'minContainers',
+    allowRotation: allowRotationInput.checked
+  };
 }
 
 function renderResults(results, leftover) {
@@ -245,7 +323,6 @@ function renderResults(results, leftover) {
         </div>
         <div class="d-flex gap-3 flex-wrap small">
           <span class="tag"><i class="fas fa-box me-1"></i>Đã xếp: ${packed.length}</span>
-          <span class="tag"><i class="fas fa-border-none me-1"></i>Chưa xếp: ${unpacked.length}</span>
           <span class="tag"><i class="fas fa-percentage me-1"></i>Độ đầy: ${fill}%</span>
           ${container.maxWeight ? `<span class="tag"><i class="fas fa-weight-hanging me-1"></i>Tải: ${weightTotal}/${container.maxWeight} kg</span>` : ''}
         </div>
@@ -283,6 +360,7 @@ function addContainerFromForm() {
   const newContainer = { id: generateId(), name, width, height, length, quantity, maxWeight };
   containers.push(newContainer);
   selectedContainerId = newContainer.id;
+  clearPackingResults();
   renderContainerList();
   renderPresetList();
   renderContainerSelect();
@@ -362,10 +440,7 @@ function updateContainerField(id, field, value) {
   } else {
     containers[idx][field] = parseFloat(value);
   }
-  packResults.clear();
-  containerResultsDiv.innerHTML = '';
-  resultDiv.style.display = 'none';
-  updatePackedBoxTable([]);
+  clearPackingResults();
   renderContainerSelect();
   renderPreview();
 }
@@ -378,10 +453,7 @@ function removeContainer(id) {
   } else if (!expanded.length) {
     selectedContainerId = null;
   }
-  packResults.clear();
-  containerResultsDiv.innerHTML = '';
-  resultDiv.style.display = 'none';
-  updatePackedBoxTable([]);
+  clearPackingResults();
   renderContainerList();
   renderContainerSelect();
   renderPreview();
@@ -452,6 +524,7 @@ function updateBoxList() {
         }
         boxes[idx][field] = field === 'quantity' ? parseInt(val, 10) : val;
       }
+      clearPackingResults();
       renderPreview();
     });
   });
@@ -460,6 +533,7 @@ function updateBoxList() {
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.index, 10);
       boxes.splice(idx, 1);
+      clearPackingResults();
       updateBoxList();
       renderPreview();
     });
@@ -517,7 +591,7 @@ function pickBestPreset() {
     return;
   }
   const aggregated = aggregateBoxes(boxes);
-  const best = findBestContainer(aggregated);
+  const best = findBestContainer(aggregated, getPackingOptions());
   if (!best) {
     showModal('Lỗi', 'Không tìm được container phù hợp.', 'danger');
     return;
@@ -554,8 +628,16 @@ function renderPreview() {
   const expanded = expandContainers(containers);
   if (!expanded.length) return;
 
+  const is3D = activeViewMode === '3d';
+  document.getElementById('threeD-container').hidden = !is3D;
+  planCanvas.hidden = is3D;
+
   if (selectedContainerId === '__all__' && expanded.length > 1) {
-    drawAllContainers(expanded);
+    if (is3D) {
+      drawAllContainers(expanded);
+    } else {
+      drawPlanView(expanded, getPackedForSelected(true), activeViewMode);
+    }
     updatePackedBoxTable(getPackedForSelected(true));
     return;
   }
@@ -564,22 +646,29 @@ function renderPreview() {
   if (!container) return;
   const packed = getPackedForSelected();
 
-  drawContainer(container, { x: 0, z: 0 });
-  drawBoxes(packed, { x: 0, z: 0 });
-  focusCamera([container], [{ x: 0, z: 0 }]);
+  if (is3D) {
+    drawContainer(container, { x: 0, z: 0 });
+    drawBoxes(packed, { x: 0, z: 0 });
+    focusCamera([container], [{ x: 0, z: 0 }]);
+  } else {
+    drawPlanView([container], packed, activeViewMode);
+  }
   updatePackedBoxTable(packed);
+  updateStepControls();
 }
 
 function clearDrawnObjects() {
   scene.children
     .filter(c => c.userData && (c.userData.isBox || c.userData.isContainer))
     .forEach(c => scene.remove(c));
+  boxMeshes.clear();
 }
 
 function clearBoxesOnly() {
   scene.children
     .filter(c => c.userData && c.userData.isBox)
     .forEach(c => scene.remove(c));
+  boxMeshes.clear();
 }
 
 function drawContainer(container, offset) {
@@ -608,13 +697,16 @@ function drawContainer(container, offset) {
 
 function drawBoxes(packed, offset, opts = { clear: true }) {
   if (opts.clear) clearBoxesOnly();
-  packed.forEach(b => {
+  packed.forEach((b, idx) => {
+    const boxKey = b.boxKey || getBoxKey(b, idx, opts.containerId || selectedContainerId);
     const g = new THREE.BoxGeometry(b.width * scale, b.height * scale, b.length * scale);
     const m = new THREE.MeshStandardMaterial({
       color: b.color || randomColor(),
       roughness: 0.32,
       metalness: 0.35,
-      envMapIntensity: 1.1
+      envMapIntensity: 1.1,
+      emissive: boxKey === selectedBoxKey ? 0xffd166 : 0x000000,
+      emissiveIntensity: boxKey === selectedBoxKey ? 0.35 : 0
     });
     const mesh = new THREE.Mesh(g, m);
     mesh.position.set(
@@ -623,10 +715,26 @@ function drawBoxes(packed, offset, opts = { clear: true }) {
       offset.z + (b.z + b.length / 2) * scale
     );
     mesh.userData.isBox = true;
+    mesh.userData.box = {
+      ...b,
+      boxKey,
+      containerId: b.containerId || opts.containerId || (selectedContainerId !== '__all__' ? selectedContainerId : ''),
+      containerName: b.containerName || opts.containerName || (packResults.get(selectedContainerId)?.container.name || ''),
+      order: b.order || idx + 1
+    };
+    mesh.userData.boxKey = boxKey;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
+    boxMeshes.set(boxKey, mesh);
   });
+}
+
+function getBoxKey(box, index, containerId = selectedContainerId) {
+  const source = box.sourceIndex ?? index;
+  const item = box.itemIndex ?? index;
+  const order = box.order ?? index + 1;
+  return `${containerId || box.containerName || 'container'}:${source}:${item}:${order}`;
 }
 
 function focusCamera(containerList, offsets) {
@@ -654,7 +762,7 @@ function getPackedForSelected(includeAll = false) {
     const rows = [];
     packResults.forEach((val, id) => {
       const name = val.container.name || id;
-      val.packed.forEach(p => rows.push({ ...p, containerName: name }));
+      val.packed.forEach(p => rows.push({ ...p, containerId: id, containerName: name }));
     });
     return rows;
   }
@@ -667,14 +775,21 @@ function updatePackedBoxTable(packedBoxes) {
   packedTableBody.innerHTML = '';
   packedBoxes.forEach((box, index) => {
     const row = packedTableBody.insertRow();
+    const boxKey = box.boxKey || getBoxKey(box, index, box.containerId || selectedContainerId);
+    const containerName = box.containerName || (packResults.get(selectedContainerId)?.container.name || '');
+    const enrichedBox = { ...box, boxKey, containerName, order: box.order || index + 1 };
+    row.dataset.boxKey = boxKey;
+    row.className = boxKey === selectedBoxKey ? 'selected-row' : '';
     row.innerHTML = `
       <td>${index + 1}</td>
-      <td>${box.containerName || (packResults.get(selectedContainerId)?.container.name || '')}</td>
+      <td>${containerName}</td>
       <td>${box.length}</td>
       <td>${box.width}</td>
       <td>${box.height}</td>
       <td>(${box.x}, ${box.y}, ${box.z})</td>
     `;
+    row.addEventListener('mouseenter', () => selectBox(enrichedBox, { silent: true }));
+    row.addEventListener('click', () => selectBox(enrichedBox));
   });
 }
 
@@ -687,7 +802,7 @@ function drawAllContainers(expanded) {
   expanded.forEach((c, idx) => {
     drawContainer(c, offsets[idx]);
     const packed = packedMap.get(c.id) || [];
-    drawBoxes(packed, offsets[idx], { clear: false });
+    drawBoxes(packed, offsets[idx], { clear: false, containerId: c.id, containerName: c.name });
   });
   focusCamera(expanded, offsets);
 }
@@ -704,11 +819,291 @@ function computeOffsets(list) {
   });
 }
 
+function switchViewMode(mode) {
+  activeViewMode = mode || '3d';
+  document.querySelectorAll('[data-view-mode]').forEach(btn => {
+    const active = btn.dataset.viewMode === activeViewMode;
+    btn.classList.toggle('btn-primary', active);
+    btn.classList.toggle('btn-outline-light', !active);
+  });
+  renderPreview();
+}
+
+function drawPlanView(containerList, packedRows, mode) {
+  const ctx = planCanvas.getContext('2d');
+  const rect = document.getElementById('threeDCard').getBoundingClientRect();
+  const cssWidth = Math.max(320, Math.floor(rect.width - 34));
+  const cssHeight = 460;
+  const dpr = window.devicePixelRatio || 1;
+  planCanvas.style.width = `${cssWidth}px`;
+  planCanvas.style.height = `${cssHeight}px`;
+  planCanvas.width = cssWidth * dpr;
+  planCanvas.height = cssHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+  if (!containerList.length) return;
+  const container = containerList[0];
+  const view = getPlanViewMetrics(container, mode);
+  const margin = 28;
+  const ratio = Math.min((cssWidth - margin * 2) / view.width, (cssHeight - margin * 2) / view.height);
+  const originX = (cssWidth - view.width * ratio) / 2;
+  const originY = (cssHeight - view.height * ratio) / 2;
+
+  ctx.strokeStyle = '#9de9ff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(originX, originY, view.width * ratio, view.height * ratio);
+  ctx.fillStyle = '#d7ecf8';
+  ctx.font = '700 13px Space Grotesk, sans-serif';
+  ctx.fillText(getPlanViewLabel(mode), originX, Math.max(18, originY - 10));
+
+  packedRows.forEach((box, idx) => {
+    const boxKey = box.boxKey || getBoxKey(box, idx, selectedContainerId);
+    const rect2d = projectBox(box, mode);
+    const x = originX + rect2d.x * ratio;
+    const y = originY + (view.height - rect2d.y - rect2d.height) * ratio;
+    const w = Math.max(2, rect2d.width * ratio);
+    const h = Math.max(2, rect2d.height * ratio);
+    ctx.fillStyle = box.color || '#6dd3ff';
+    ctx.globalAlpha = boxKey === selectedBoxKey ? 1 : 0.72;
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = boxKey === selectedBoxKey ? '#ffd166' : '#ffffff';
+    ctx.lineWidth = boxKey === selectedBoxKey ? 3 : 1;
+    ctx.strokeRect(x, y, w, h);
+    if (w > 22 && h > 16) {
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '700 11px Space Grotesk, sans-serif';
+      ctx.fillText(String(box.order || idx + 1), x + 5, y + 14);
+    }
+  });
+}
+
+function getPlanViewMetrics(container, mode) {
+  if (mode === 'side') return { width: container.length, height: container.height };
+  if (mode === 'front') return { width: container.width, height: container.height };
+  return { width: container.width, height: container.length };
+}
+
+function getPlanViewLabel(mode) {
+  if (mode === 'side') return 'Mặt bên: dài x cao';
+  if (mode === 'front') return 'Mặt trước: rộng x cao';
+  return 'Mặt bằng: rộng x dài';
+}
+
+function projectBox(box, mode) {
+  if (mode === 'side') {
+    return { x: box.z, y: box.y, width: box.length, height: box.height };
+  }
+  if (mode === 'front') {
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  }
+  return { x: box.x, y: box.z, width: box.width, height: box.length };
+}
+
+function onCanvasClick(event) {
+  if (!raycaster || !pointer || activeViewMode !== '3d') return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(Array.from(boxMeshes.values()), false);
+  if (hits[0]?.object?.userData?.box) {
+    selectBox(hits[0].object.userData.box);
+  }
+}
+
+function selectBox(box, opts = {}) {
+  const containerId = box.containerId || (selectedContainerId !== '__all__' ? selectedContainerId : '');
+  selectedBoxKey = box.boxKey;
+  selectedBoxData = { ...box, containerId };
+  renderSelectedBoxInfo(selectedBoxData);
+  populateManualEdit(selectedBoxData);
+  highlightSelectedBox();
+  if (!opts.silent && activeViewMode !== '3d') {
+    renderPreview();
+  }
+  document.querySelectorAll('[data-box-key]').forEach(row => {
+    row.classList.toggle('selected-row', row.dataset.boxKey === selectedBoxKey);
+  });
+}
+
+function highlightSelectedBox() {
+  boxMeshes.forEach((mesh, key) => {
+    if (!mesh.material?.emissive) return;
+    const active = key === selectedBoxKey;
+    mesh.material.emissive.setHex(active ? 0xffd166 : 0x000000);
+    mesh.material.emissiveIntensity = active ? 0.35 : 0;
+  });
+}
+
+function renderSelectedBoxInfo(box) {
+  selectedBoxInfo.innerHTML = `
+    <div class="fw-bold"><i class="fas fa-box me-1"></i>${box.label || `Hộp ${box.order || ''}`}</div>
+    <div class="detail-grid mt-2">
+      <span>Thứ tự</span><strong>${box.order || '-'}</strong>
+      <span>Container</span><strong>${box.containerName || '-'}</strong>
+      <span>Kích thước</span><strong>${box.length} x ${box.width} x ${box.height} m</strong>
+      <span>Khối lượng</span><strong>${box.weight || 0} kg</strong>
+      <span>Vị trí</span><strong>(${box.x}, ${box.y}, ${box.z})</strong>
+    </div>
+  `;
+}
+
+function setManualControlsEnabled(enabled) {
+  Object.values(manualInputs).forEach(input => {
+    input.disabled = !enabled;
+  });
+  [
+    rotateLengthWidthBtn,
+    rotateLengthHeightBtn,
+    rotateWidthHeightBtn,
+    validateManualBtn,
+    applyManualBtn
+  ].forEach(btn => {
+    btn.disabled = !enabled;
+  });
+}
+
+function populateManualEdit(box) {
+  const canEdit = Boolean(box.containerId && packResults.has(box.containerId));
+  setManualControlsEnabled(canEdit);
+  if (!canEdit) {
+    setManualStatus('invalid', 'Chọn một container cụ thể');
+    return;
+  }
+  manualInputs.x.value = box.x;
+  manualInputs.y.value = box.y;
+  manualInputs.z.value = box.z;
+  manualInputs.length.value = box.length;
+  manualInputs.width.value = box.width;
+  manualInputs.height.value = box.height;
+  setManualStatus('muted', 'Sẵn sàng chỉnh');
+}
+
+function setManualStatus(type, message) {
+  manualEditStatus.className = `manual-status ${type}`;
+  manualEditStatus.textContent = message;
+}
+
+function rotateManualDimensions(first, second) {
+  if (!selectedBoxData) return;
+  const current = manualInputs[first].value;
+  manualInputs[first].value = manualInputs[second].value;
+  manualInputs[second].value = current;
+  setManualStatus('muted', 'Đã xoay, cần kiểm tra');
+}
+
+function getManualCandidate() {
+  if (!selectedBoxData) return null;
+  return {
+    ...selectedBoxData,
+    x: parseFloat(manualInputs.x.value),
+    y: parseFloat(manualInputs.y.value),
+    z: parseFloat(manualInputs.z.value),
+    length: parseFloat(manualInputs.length.value),
+    width: parseFloat(manualInputs.width.value),
+    height: parseFloat(manualInputs.height.value)
+  };
+}
+
+function validateManualEdit(opts = {}) {
+  const candidate = getManualCandidate();
+  if (!candidate || !candidate.containerId) {
+    setManualStatus('invalid', 'Chưa chọn hộp');
+    return null;
+  }
+  const result = packResults.get(candidate.containerId);
+  if (!result) {
+    setManualStatus('invalid', 'Không tìm thấy container');
+    return null;
+  }
+  const validation = validateManualPlacement(result.container, result.packed, candidate);
+  if (validation.valid) {
+    if (opts.showSuccess) setManualStatus('valid', 'Hợp lệ');
+  } else {
+    setManualStatus('invalid', getManualErrorMessage(validation.errors));
+  }
+  return validation;
+}
+
+function getManualErrorMessage(errors) {
+  const labels = {
+    'invalid-number': 'Số không hợp lệ',
+    'out-of-bounds': 'Vượt container',
+    collision: 'Va chạm hộp khác',
+    unsupported: 'Không có điểm đỡ hợp lệ',
+    'non-stackable-support': 'Hộp này không cho xếp chồng',
+    overweight: 'Vượt tải trọng'
+  };
+  return (errors || []).map(error => labels[error] || error).join(', ');
+}
+
+function applyManualEdit() {
+  const candidate = getManualCandidate();
+  const validation = validateManualEdit();
+  if (!candidate || !validation?.valid) return;
+  const result = packResults.get(candidate.containerId);
+  const idx = result.packed.findIndex((box, index) =>
+    getBoxKey(box, index, candidate.containerId) === selectedBoxKey
+  );
+  if (idx === -1) {
+    setManualStatus('invalid', 'Không tìm thấy hộp');
+    return;
+  }
+
+  const updated = {
+    ...result.packed[idx],
+    x: roundMetric(candidate.x),
+    y: roundMetric(candidate.y),
+    z: roundMetric(candidate.z),
+    length: roundMetric(candidate.length),
+    width: roundMetric(candidate.width),
+    height: roundMetric(candidate.height)
+  };
+  result.packed[idx] = updated;
+  selectedBoxData = {
+    ...updated,
+    boxKey: selectedBoxKey,
+    containerId: candidate.containerId,
+    containerName: result.container.name || candidate.containerId
+  };
+  refreshAfterManualEdit();
+  selectBox(selectedBoxData, { silent: true });
+  setManualStatus('valid', 'Đã áp dụng');
+}
+
+function roundMetric(value) {
+  return Math.round((Number(value) || 0) * 1000) / 1000;
+}
+
+function getCurrentResults() {
+  return Array.from(packResults.values()).map(value => ({
+    container: value.container,
+    packed: value.packed,
+    unpacked: value.unpacked || []
+  }));
+}
+
+function refreshAfterManualEdit() {
+  const currentResults = getCurrentResults();
+  const leftover = lastPackData?.leftover || [];
+  renderResults(currentResults, aggregateBoxes(leftover));
+  renderOptimizationInsights(currentResults, leftover, getPackingOptions());
+  updateLoadingOrderTable(getAllPackedRows());
+  renderPreview();
+  updateDashboardStats();
+}
+
 // Step controls
 function resetStepState() {
+  stepPause();
   stepIndex = 0;
   stepPacked = [];
   stepContainerId = selectedContainerId;
+  updateStepControls();
 }
 
 function stepNext() {
@@ -724,17 +1119,10 @@ function stepNext() {
   if (stepContainerId !== selectedContainerId) {
     resetStepState();
   }
-  if (stepIndex === 0) {
-    clearDrawnObjects();
-    drawContainer(res.container, { x: 0, z: 0 });
-    drawBoxes([], { x: 0, z: 0 });
-  }
   if (stepIndex < res.packed.length) {
-    stepPacked.push(res.packed[stepIndex]);
-    drawBoxes(stepPacked, { x: 0, z: 0 });
-    updatePackedBoxTable(stepPacked);
-    stepIndex += 1;
+    applyStepIndex(stepIndex + 1);
   } else {
+    stepPause();
     showModal('Thông báo', 'Đã xếp hết các hộp cho container này.', 'success');
   }
 }
@@ -751,15 +1139,67 @@ function stepPrev() {
     return;
   }
   if (stepIndex > 0) {
-    stepIndex -= 1;
-    stepPacked.pop();
-    drawBoxes(stepPacked, { x: 0, z: 0 });
-    updatePackedBoxTable(stepPacked);
+    applyStepIndex(stepIndex - 1);
   }
 }
 
 function stepPause() {
-  // reserved for future auto-play; here only reset buffer
+  if (stepTimer) {
+    clearInterval(stepTimer);
+    stepTimer = null;
+  }
+  if (stepPlayBtn) stepPlayBtn.innerHTML = '<i class="fas fa-play"></i>';
+}
+
+function toggleStepPlay() {
+  if (stepTimer) {
+    stepPause();
+    return;
+  }
+  const res = packResults.get(selectedContainerId);
+  if (!res || !res.packed.length || selectedContainerId === '__all__') {
+    showModal('Thông báo', 'Hãy chọn một container đã xếp để phát từng bước.', 'warning');
+    return;
+  }
+  stepPlayBtn.innerHTML = '<i class="fas fa-pause"></i>';
+  stepTimer = setInterval(() => {
+    if (stepIndex >= res.packed.length) {
+      stepPause();
+      return;
+    }
+    applyStepIndex(stepIndex + 1);
+  }, parseInt(stepSpeedSelect.value, 10) || 700);
+}
+
+function applyStepIndex(nextIndex) {
+  const res = packResults.get(selectedContainerId);
+  if (!res || selectedContainerId === '__all__') return;
+  stepContainerId = selectedContainerId;
+  stepIndex = Math.max(0, Math.min(nextIndex, res.packed.length));
+  stepPacked = res.packed.slice(0, stepIndex);
+
+  if (activeViewMode === '3d') {
+    clearDrawnObjects();
+    drawContainer(res.container, { x: 0, z: 0 });
+    drawBoxes(stepPacked, { x: 0, z: 0 }, { clear: false, containerId: selectedContainerId, containerName: res.container.name });
+  } else {
+    drawPlanView([res.container], stepPacked, activeViewMode);
+  }
+  updatePackedBoxTable(stepPacked);
+  updateStepControls();
+}
+
+function updateStepControls() {
+  const res = selectedContainerId && selectedContainerId !== '__all__' ? packResults.get(selectedContainerId) : null;
+  const total = res ? res.packed.length : 0;
+  if (stepSlider) {
+    stepSlider.max = total;
+    stepSlider.value = Math.min(stepIndex, total);
+    stepSlider.disabled = total === 0;
+  }
+  if (stepLabel) {
+    stepLabel.textContent = total ? `Hộp ${Math.min(stepIndex, total)} / ${total}` : '0 / 0';
+  }
 }
 
 // Export/import
@@ -829,6 +1269,7 @@ function onContainerFileChange(e) {
       }
       imported.forEach(c => containers.push({ ...c, id: generateId() }));
       selectedContainerId = containers[containers.length - 1].id;
+      clearPackingResults();
       renderContainerList();
       renderContainerSelect();
       renderPreview();
@@ -871,6 +1312,7 @@ function onBoxFileChange(e) {
         return;
       }
       imported.forEach(b => boxes.push(b));
+      clearPackingResults();
       updateBoxList();
       renderPreview();
       showModal('Thành công', `Đã nhập ${imported.length} dòng hộp.`, 'success');
@@ -987,6 +1429,83 @@ function parseBoxXLSX(binary) {
   return json.map(row => normalizeBoxRecord(row)).filter(Boolean);
 }
 
+function getAllPackedRows() {
+  const rows = [];
+  packResults.forEach((value, containerId) => {
+    value.packed.forEach((box, index) => {
+      rows.push({
+        ...box,
+        containerId,
+        containerName: value.container.name || containerId,
+        boxKey: getBoxKey(box, index, containerId)
+      });
+    });
+  });
+  return rows.sort((a, b) => (a.order || 0) - (b.order || 0));
+}
+
+function updateLoadingOrderTable(rows) {
+  if (!loadingOrderTableBody) return;
+  loadingOrderTableBody.innerHTML = '';
+  rows.forEach((box, index) => {
+    const row = loadingOrderTableBody.insertRow();
+    row.dataset.boxKey = box.boxKey;
+    row.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${box.label || `Hộp ${index + 1}`}</td>
+      <td>${box.containerName || ''}</td>
+      <td>${box.length} x ${box.width} x ${box.height}</td>
+      <td>(${box.x}, ${box.y}, ${box.z})</td>
+    `;
+    row.addEventListener('click', () => selectBox({ ...box, order: index + 1 }));
+  });
+}
+
+function renderOptimizationInsights(results, leftover, packingOptions) {
+  if (!optimizationInsights) return;
+  const messages = [];
+  const totalVolume = results.reduce((sum, r) => sum + r.container.width * r.container.height * r.container.length, 0);
+  const usedVolume = results.reduce((sum, r) =>
+    sum + r.packed.reduce((acc, b) => acc + b.width * b.height * b.length, 0), 0);
+  const freeVolume = Math.max(0, totalVolume - usedVolume);
+  const fill = totalVolume ? ((usedVolume / totalVolume) * 100).toFixed(1) : '0.0';
+
+  messages.push(`<div class="insight success"><i class="fas fa-chart-pie"></i><span>Độ đầy tổng: <strong>${fill}%</strong>, còn trống khoảng <strong>${freeVolume.toFixed(2)} m³</strong>.</span></div>`);
+
+  results.forEach(r => {
+    const containerVolume = r.container.width * r.container.height * r.container.length;
+    const packedVolume = r.packed.reduce((sum, b) => sum + b.width * b.height * b.length, 0);
+    const containerFill = containerVolume ? (packedVolume / containerVolume) * 100 : 0;
+    if (containerFill < 50 && r.packed.length) {
+      messages.push(`<div class="insight warning"><i class="fas fa-triangle-exclamation"></i><span>${r.container.name || 'Container'} mới đầy ${containerFill.toFixed(1)}%. Có thể thử container nhỏ hơn hoặc gộp chuyến.</span></div>`);
+    }
+  });
+
+  if (leftover.length) {
+    const reasonLabels = {
+      oversize: 'quá kích thước',
+      overweight: 'vượt tải trọng',
+      'no-space': 'không còn vùng trống phù hợp'
+    };
+    const grouped = leftover.reduce((map, box) => {
+      const reason = reasonLabels[box.reason] || 'chưa xác định';
+      map.set(reason, (map.get(reason) || 0) + 1);
+      return map;
+    }, new Map());
+    const detail = Array.from(grouped.entries()).map(([reason, count]) => `${count} hộp ${reason}`).join(', ');
+    messages.push(`<div class="insight danger"><i class="fas fa-box-open"></i><span>Còn ${leftover.length} hộp chưa xếp: ${detail}.</span></div>`);
+  } else {
+    messages.push(`<div class="insight success"><i class="fas fa-check-circle"></i><span>Tất cả hộp đã được xếp trong cấu hình hiện tại.</span></div>`);
+  }
+
+  const bestPreset = findBestContainer(aggregateBoxes(boxes), packingOptions);
+  if (bestPreset) {
+    messages.push(`<div class="insight"><i class="fas fa-magic"></i><span>Gợi ý preset: <strong>${bestPreset.name}</strong> (${bestPreset.length} x ${bestPreset.width} x ${bestPreset.height} m), còn dư ${bestPreset.leftover || 0} hộp.</span></div>`);
+  }
+
+  optimizationInsights.innerHTML = messages.join('');
+}
+
 function normalizeBoxRecord(rec) {
   if (!rec) return null;
   const length = parseFloat(rec.length || rec.dai || rec.chieudai);
@@ -1016,6 +1535,10 @@ function resetAll() {
   boxes = [];
   containers = [];
   packResults = new Map();
+  lastLeftoverCount = 0;
+  lastPackData = null;
+  selectedBoxKey = null;
+  selectedBoxData = null;
   selectedContainerId = null;
   stepPause();
   resetStepState();
@@ -1032,10 +1555,54 @@ function resetAll() {
   renderContainerSelect();
   updateBoxList();
   renderPreview();
+  optimizationInsights.innerHTML = '<div class="text-muted">Bấm “Xếp hộp” để xem gợi ý tối ưu.</div>';
+  if (loadingOrderTableBody) loadingOrderTableBody.innerHTML = '';
+  resetManualPanel();
+  updateDashboardStats();
   showModal('Đã đặt lại', 'Toàn bộ dữ liệu đã được làm mới.', 'success');
 }
 
 // Utils
+function clearPackingResults() {
+  packResults.clear();
+  lastLeftoverCount = 0;
+  lastPackData = null;
+  selectedBoxKey = null;
+  selectedBoxData = null;
+  containerResultsDiv.innerHTML = '';
+  resultDiv.style.display = 'none';
+  containerTypeInfo.style.display = 'none';
+  optimizationInsights.innerHTML = '<div class="text-muted">Bấm “Xếp hộp” để xem gợi ý tối ưu.</div>';
+  if (loadingOrderTableBody) loadingOrderTableBody.innerHTML = '';
+  selectedBoxInfo.innerHTML = `
+    <div class="fw-bold"><i class="fas fa-hand-pointer me-1"></i>Thông tin hộp</div>
+    <div class="text-muted small">Click một hộp trong 3D hoặc chọn một dòng trong bảng để xem chi tiết.</div>
+  `;
+  resetManualPanel();
+  updatePackedBoxTable([]);
+  resetStepState();
+  updateDashboardStats();
+}
+
+function resetManualPanel() {
+  setManualControlsEnabled(false);
+  Object.values(manualInputs).forEach(input => {
+    input.value = '';
+  });
+  setManualStatus('muted', 'Chưa chọn hộp');
+}
+
+function updateDashboardStats() {
+  const expandedContainers = expandContainers(containers).length;
+  const totalBoxes = boxes.reduce((sum, box) => sum + (parseInt(box.quantity, 10) || 0), 0);
+  const packedBoxes = Array.from(packResults.values()).reduce((sum, result) => sum + result.packed.length, 0);
+
+  if (statContainers) statContainers.textContent = expandedContainers;
+  if (statBoxes) statBoxes.textContent = totalBoxes;
+  if (statPacked) statPacked.textContent = packedBoxes;
+  if (statLeftover) statLeftover.textContent = lastLeftoverCount;
+}
+
 let notificationModalInstance = null;
 function showModal(title, message, type = 'primary') {
   document.getElementById('notificationModalLabel').textContent = title;
