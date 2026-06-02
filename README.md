@@ -26,4 +26,4 @@ The Kubernetes service is exposed with NodePort 30080:
 http://<k8s-node-ip>:30080
 ```
 
-The GitLab Runner and Kubernetes nodes must allow the internal insecure registry `172.16.4.12:8888` if GitLab registry is served over HTTP.
+GitLab CI uses Kaniko, so the runner does not need a local Docker daemon. Kubernetes nodes must allow the internal insecure registry `172.16.4.12:8888` if GitLab registry is served over HTTP.
