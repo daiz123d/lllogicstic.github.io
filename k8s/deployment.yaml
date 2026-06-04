@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: weeb
-          image: 172.16.4.12:5050/dai.ta/tesst:latest
+          image: docker.io/daiz123d/tesst:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
