@@ -1,6 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.122.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.122.0/examples/jsm/controls/OrbitControls.js';
-import { packMultipleContainers, aggregateBoxes, containerPresets, findBestContainer, validateManualPlacement } from './binPacking.js';
+import { packMultipleContainers, aggregateBoxes, containerPresets, findBestContainer, selectBestPresetContainers, validateManualPlacement } from './binPacking.js';
 
 let scene, camera, renderer, controls, raycaster, pointer;
 let boxes = [];
@@ -585,13 +585,72 @@ function renderPresetList() {
   });
 }
 
+function getPresetFitSummary(best) {
+  if (!best) return '';
+  const packedCount = best.packedCount ?? (best.packed ? best.packed.length : 0);
+  const totalBoxes = best.totalBoxes ?? (packedCount + (best.leftover || 0));
+  const leftover = best.leftover || 0;
+  return `${best.name} (${best.length} x ${best.width} x ${best.height} m), xếp được ${packedCount}/${totalBoxes} hộp, còn dư ${leftover} hộp`;
+}
+
+function getPresetSelectionSummary(selection) {
+  if (!selection || !selection.results.length) return '';
+  return selection.results.map((item, index) =>
+    `${index + 1}. ${item.container.name} (${item.container.length} x ${item.container.width} x ${item.container.height} m)`
+  ).join('<br>');
+}
+
 function pickBestPreset() {
   if (!boxes.length) {
     showModal('Lỗi', 'Hãy nhập hộp trước khi chọn container.', 'danger');
     return;
   }
   const aggregated = aggregateBoxes(boxes);
+  const selection = selectBestPresetContainers(aggregated, getPackingOptions());
+  if (selection.results.length) {
+    containers = selection.results.map((item, index) => ({
+      id: generateId(),
+      name: selection.results.length > 1 ? `${item.container.name} #${index + 1}` : item.container.name,
+      length: item.container.length,
+      width: item.container.width,
+      height: item.container.height,
+      maxWeight: item.container.maxWeight || 0,
+      quantity: 1
+    }));
+    selectedContainerId = containers.length > 1 ? '__all__' : containers[0].id;
+
+    const first = containers[0];
+    document.getElementById('containerNameInput').value = first.name || '';
+    document.getElementById('containerLengthInput').value = first.length;
+    document.getElementById('containerWidthInput').value = first.width;
+    document.getElementById('containerHeightInput').value = first.height;
+    document.getElementById('containerWeightInput').value = first.maxWeight || '';
+    document.getElementById('containerQuantityInput').value = 1;
+
+    renderContainerList();
+    renderContainerSelect();
+    renderPreview();
+    packAll();
+
+    const summary = getPresetSelectionSummary(selection);
+    const hasLeftover = selection.leftover.length > 0;
+    containerTypeInfo.className = `alert alert-${hasLeftover ? 'warning' : 'success'} mt-2`;
+    containerTypeInfo.style.display = 'block';
+    containerTypeInfo.innerHTML = hasLeftover
+      ? `Đã chọn ${containers.length} container chuẩn:<br>${summary}<br>Còn ${selection.leftover.length} hộp chưa xếp được. Hãy thêm container lớn hơn hoặc tách riêng hàng quá khổ/quá tải.`
+      : `Đã chọn ${containers.length} container chuẩn phù hợp:<br>${summary}`;
+    showModal(hasLeftover ? 'Còn hộp chưa xếp' : 'Đã chọn container phù hợp', containerTypeInfo.innerHTML, hasLeftover ? 'warning' : 'success');
+    return;
+  }
   const best = findBestContainer(aggregated, getPackingOptions());
+  if (best && !best.fitsAll) {
+    const summary = getPresetFitSummary(best);
+    containerTypeInfo.className = 'alert alert-warning mt-2';
+    containerTypeInfo.style.display = 'block';
+    containerTypeInfo.innerHTML = `Không có container chuẩn nào xếp hết số hộp hiện tại. Gần nhất: <strong>${summary}</strong>. Hãy thêm container lớn hơn hoặc tách đơn thành nhiều container.`;
+    showModal('Chưa có container phù hợp', containerTypeInfo.innerHTML, 'warning');
+    return;
+  }
   if (!best) {
     showModal('Lỗi', 'Không tìm được container phù hợp.', 'danger');
     return;
@@ -1499,8 +1558,17 @@ function renderOptimizationInsights(results, leftover, packingOptions) {
   }
 
   const bestPreset = findBestContainer(aggregateBoxes(boxes), packingOptions);
-  if (bestPreset) {
+  const presetSelection = selectBestPresetContainers(aggregateBoxes(boxes), packingOptions);
+  if (bestPreset && bestPreset.fitsAll) {
     messages.push(`<div class="insight"><i class="fas fa-magic"></i><span>Gợi ý preset: <strong>${bestPreset.name}</strong> (${bestPreset.length} x ${bestPreset.width} x ${bestPreset.height} m), còn dư ${bestPreset.leftover || 0} hộp.</span></div>`);
+  }
+
+  if (bestPreset && !bestPreset.fitsAll && presetSelection.results.length && presetSelection.fitsAll) {
+    messages.push(`<div class="insight"><i class="fas fa-magic"></i><span>Gợi ý dùng ${presetSelection.results.length} container chuẩn:<br>${getPresetSelectionSummary(presetSelection)}</span></div>`);
+  }
+
+  if (bestPreset && !bestPreset.fitsAll && !presetSelection.fitsAll) {
+    messages.push(`<div class="insight warning"><i class="fas fa-triangle-exclamation"></i><span>Chưa có preset chuẩn nào xếp hết hàng. Gần nhất: <strong>${getPresetFitSummary(bestPreset)}</strong>.</span></div>`);
   }
 
   optimizationInsights.innerHTML = messages.join('');

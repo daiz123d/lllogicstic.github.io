@@ -25,21 +25,39 @@ export const containerPresets = [
     { name: 'Sàn 17m5 (TQ)', width: 3.0, height: 3.0, length: 17.5, maxWeight: 30000 },
 ];
 
+function normalizeQuantity(value) {
+    const quantity = Number(value ?? 1);
+    if (!Number.isFinite(quantity) || quantity <= 0) return 1;
+    return Math.floor(quantity);
+}
+
+function normalizePackingBoxes(boxes) {
+    return (boxes || []).map(box => ({
+        ...box,
+        quantity: normalizeQuantity(box.quantity)
+    }));
+}
+
+function countPackingBoxes(boxes) {
+    return normalizePackingBoxes(boxes).reduce((sum, box) => sum + normalizeQuantity(box.quantity), 0);
+}
+
 export function findBestContainer(boxes, options = {}) {
     const presets = [...containerPresets].sort((a, b) =>
         (a.length * a.width * a.height) - (b.length * b.width * b.height)
     );
 
     const aggregated = boxes; // boxes đã chứa quantity
+    const packingBoxes = normalizePackingBoxes(aggregated);
+    const totalBoxes = packingBoxes.reduce((s, b) => s + normalizeQuantity(b.quantity), 0);
     let bestZero = null;
     let bestFallback = null;
 
     presets.forEach(c => {
-        const result = packBoxes(c.width, c.height, c.length, aggregated, c.maxWeight || 0, options);
+        const result = packBoxes(c.width, c.height, c.length, packingBoxes, c.maxWeight || 0, options);
         const leftover = result.unpacked.length;
         const volume = c.length * c.width * c.height;
         const packedCount = result.packed.length;
-        const totalBoxes = aggregated.reduce((s, b) => s + (b.quantity || 0), 0);
         const allPacked = leftover === 0 && packedCount >= totalBoxes;
 
         if (allPacked) {
@@ -62,15 +80,57 @@ export function findBestContainer(boxes, options = {}) {
     const chosen = bestZero || bestFallback;
     if (!chosen) return null;
     const totalWeight = chosen.result.packed.reduce((s, b) => s + (b.weight || 0), 0);
+    const unpacked = chosen.result.unpacked || [];
     return {
         ...chosen.container,
+        fitsAll: Boolean(bestZero),
         packed: chosen.result.packed,
+        unpacked,
+        packedCount: chosen.result.packed.length,
+        totalBoxes,
         totalWeight,
-        leftover: chosen.result.unpacked ? chosen.result.unpacked.length : (bestZero ? 0 : chosen.leftover)
+        leftover: unpacked.length
     };
 }
 
 // Gom hộp đơn lẻ cùng đặc tính thành quantity
+export function selectBestPresetContainers(boxes, options = {}) {
+    let remaining = normalizePackingBoxes(boxes);
+    const results = [];
+    const maxContainers = Math.max(1, options.maxPresetContainers || countPackingBoxes(remaining));
+
+    while (countPackingBoxes(remaining) > 0 && results.length < maxContainers) {
+        const remainingCount = countPackingBoxes(remaining);
+        const best = findBestContainer(remaining, options);
+
+        if (!best || best.packedCount <= 0 || best.leftover >= remainingCount) {
+            break;
+        }
+
+        results.push({
+            container: {
+                name: best.name,
+                width: best.width,
+                height: best.height,
+                length: best.length,
+                maxWeight: best.maxWeight || 0,
+                presetName: best.name
+            },
+            packed: best.packed,
+            unpacked: best.unpacked,
+            fitsAll: best.fitsAll
+        });
+
+        remaining = best.unpacked.map(box => ({ ...box, quantity: 1 }));
+    }
+
+    return {
+        results,
+        leftover: remaining,
+        fitsAll: countPackingBoxes(remaining) === 0
+    };
+}
+
 export function aggregateBoxes(items) {
     const map = new Map();
     (items || []).forEach(b => {
@@ -78,8 +138,7 @@ export function aggregateBoxes(items) {
         if (!map.has(key)) {
             map.set(key, { ...b, quantity: 0 });
         }
-        const qty = Number(b.quantity || 1);
-        map.get(key).quantity += (!Number.isFinite(qty) || qty <= 0 ? 1 : qty);
+        map.get(key).quantity += normalizeQuantity(b.quantity);
     });
     return Array.from(map.values());
 }
@@ -209,8 +268,9 @@ export function packBoxes(containerWidth, containerHeight, containerLength, boxe
         allowRotation: options.allowRotation !== false
     };
     const allBoxes = [];
-    boxes.forEach((box, sourceIndex) => {
-        for (let i = 0; i < box.quantity; i++) {
+    (boxes || []).forEach((box, sourceIndex) => {
+        const quantity = normalizeQuantity(box.quantity);
+        for (let i = 0; i < quantity; i++) {
             allBoxes.push({
                 id: box.id,
                 label: box.label || box.name || box.id || `Hộp ${sourceIndex + 1}`,
@@ -490,7 +550,8 @@ export function packMultipleContainers(containers, boxes, options = {}) {
 
     const expandedBoxes = [];
     (boxes || []).forEach((box, sourceIndex) => {
-        for (let i = 0; i < (box.quantity || 0); i++) {
+        const quantity = normalizeQuantity(box.quantity);
+        for (let i = 0; i < quantity; i++) {
             expandedBoxes.push({
                 id: box.id,
                 label: box.label || box.name || box.id || `Hộp ${sourceIndex + 1}`,
