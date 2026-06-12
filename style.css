@@ -281,7 +281,9 @@ body {
   width: 100%;
   height: 460px;
   overflow: hidden;
-  background: #0f172a;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(20, 184, 166, 0.18), transparent 34%),
+    linear-gradient(180deg, #101a2c 0%, #0b1220 100%);
   border: 1px solid #172338;
   border-radius: 8px;
 }
@@ -290,6 +292,33 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.camera-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  color: #334155;
+  background: #f8fbfd;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.camera-tools span {
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.camera-tools button {
+  width: 38px;
+  min-width: 38px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
 }
 
 .controls-stack {

@@ -1,6 +1,8 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.122.0/build/three.module.js';
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.122.0/examples/jsm/controls/OrbitControls.js';
 import { packMultipleContainers, aggregateBoxes, containerPresets, findBestContainer, selectBestPresetContainers, validateManualPlacement } from './binPacking.js';
+import { isBoxFieldKey, parseBoxRows } from './boxImport.js';
+import { buildBoxLabel, getCameraPlacement, getContainerRibCount } from './sceneHelpers.js';
 
 let scene, camera, renderer, controls, raycaster, pointer;
 let boxes = [];
@@ -17,6 +19,7 @@ let stepTimer = null;
 let activeViewMode = '3d';
 let selectedBoxKey = null;
 let selectedBoxData = null;
+let hoveredBoxKey = null;
 let boxMeshes = new Map();
 
 const scale = 100;
@@ -138,6 +141,9 @@ function bindEvents() {
   document.querySelectorAll('[data-view-mode]').forEach(btn => {
     btn.addEventListener('click', () => switchViewMode(btn.dataset.viewMode));
   });
+  document.querySelectorAll('[data-camera-view]').forEach(btn => {
+    btn.addEventListener('click', () => setCameraView(btn.dataset.cameraView));
+  });
   rotateLengthWidthBtn.addEventListener('click', () => rotateManualDimensions('length', 'width'));
   rotateLengthHeightBtn.addEventListener('click', () => rotateManualDimensions('length', 'height'));
   rotateWidthHeightBtn.addEventListener('click', () => rotateManualDimensions('width', 'height'));
@@ -198,6 +204,12 @@ function initScene() {
   raycaster = new THREE.Raycaster();
   pointer = new THREE.Vector2();
   renderer.domElement.addEventListener('click', onCanvasClick);
+  renderer.domElement.addEventListener('pointermove', onCanvasPointerMove);
+  renderer.domElement.addEventListener('pointerleave', () => {
+    hoveredBoxKey = null;
+    renderer.domElement.style.cursor = 'default';
+    highlightSelectedBox();
+  });
 
   const hemiLight = new THREE.HemisphereLight(0xcfe7ff, 0x0b1324, 0.7);
   scene.add(hemiLight);
@@ -731,27 +743,118 @@ function clearBoxesOnly() {
 }
 
 function drawContainer(container, offset) {
-  const geom = new THREE.BoxGeometry(container.width * scale, container.height * scale, container.length * scale);
-  const mat = new THREE.MeshPhysicalMaterial({
-    color: 0x4fb2ff,
-    transparent: true,
-    opacity: 0.15,
-    roughness: 0.08,
-    metalness: 0.35,
-    clearcoat: 0.4,
-    clearcoatRoughness: 0.05
-  });
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.position.set(offset.x + container.width * scale / 2, container.height * scale / 2, offset.z + container.length * scale / 2);
-  mesh.userData.isContainer = true;
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  const group = new THREE.Group();
+  group.userData.isContainer = true;
 
-  const edges = new THREE.EdgesGeometry(geom);
-  const lines = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x9de9ff, linewidth: 2 }));
-  lines.position.copy(mesh.position);
-  lines.userData.isContainer = true;
-  scene.add(lines);
+  const width = container.width * scale;
+  const height = container.height * scale;
+  const length = container.length * scale;
+  const x = offset.x;
+  const z = offset.z;
+  const t = Math.max(7, Math.min(width, height, length) * 0.025);
+  const ribCount = getContainerRibCount(container);
+
+  const wallMat = new THREE.MeshPhysicalMaterial({
+    color: 0x2aa7e0,
+    transparent: true,
+    opacity: 0.18,
+    roughness: 0.28,
+    metalness: 0.35,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.18,
+    side: THREE.DoubleSide
+  });
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x253244, roughness: 0.72, metalness: 0.25 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x70d9ff, roughness: 0.35, metalness: 0.55 });
+  const ribMat = new THREE.MeshStandardMaterial({ color: 0x0e7490, roughness: 0.42, metalness: 0.5 });
+  const doorMat = new THREE.MeshPhysicalMaterial({
+    color: 0x1f9bd1,
+    transparent: true,
+    opacity: 0.32,
+    roughness: 0.35,
+    metalness: 0.4,
+    clearcoat: 0.25
+  });
+
+  addContainerPart(group, width, t, length, x + width / 2, t / 2, z + length / 2, floorMat, true);
+  addContainerPart(group, t, height, length, x + t / 2, height / 2, z + length / 2, wallMat);
+  addContainerPart(group, t, height, length, x + width - t / 2, height / 2, z + length / 2, wallMat);
+  addContainerPart(group, width, height, t, x + width / 2, height / 2, z + length - t / 2, doorMat);
+
+  addContainerFrame(group, x, z, width, height, length, t, frameMat);
+  addContainerCorrugation(group, x, z, width, height, length, t, ribCount, ribMat);
+  addContainerDoors(group, x, z, width, height, length, t, frameMat);
+
+  const label = createTextSprite(container.name || 'Container', {
+    background: 'rgba(6, 32, 48, 0.82)',
+    color: '#dff7ff',
+    border: '#67e8f9',
+    fontSize: 22,
+    scaleFactor: 0.28,
+    maxWidth: 120
+  });
+  label.position.set(x + width / 2, height + 42, z + length / 2);
+  label.userData.isContainer = true;
+  group.add(label);
+
+  scene.add(group);
+}
+
+function addContainerPart(group, sx, sy, sz, px, py, pz, material, receiveShadow = false) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material);
+  mesh.position.set(px, py, pz);
+  mesh.castShadow = true;
+  mesh.receiveShadow = receiveShadow;
+  mesh.userData.isContainer = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function addContainerFrame(group, x, z, width, height, length, t, material) {
+  const post = t * 1.45;
+  const positions = [
+    [x + post / 2, height / 2, z + post / 2],
+    [x + width - post / 2, height / 2, z + post / 2],
+    [x + post / 2, height / 2, z + length - post / 2],
+    [x + width - post / 2, height / 2, z + length - post / 2]
+  ];
+  positions.forEach(([px, py, pz]) => addContainerPart(group, post, height, post, px, py, pz, material));
+
+  const yTop = height - t / 2;
+  const yBottom = t / 2;
+  [yTop, yBottom].forEach(py => {
+    addContainerPart(group, width, t, t, x + width / 2, py, z + t / 2, material);
+    addContainerPart(group, width, t, t, x + width / 2, py, z + length - t / 2, material);
+    addContainerPart(group, t, t, length, x + t / 2, py, z + length / 2, material);
+    addContainerPart(group, t, t, length, x + width - t / 2, py, z + length / 2, material);
+  });
+
+  const roofBeams = 4;
+  for (let i = 1; i <= roofBeams; i++) {
+    const beamZ = z + (length / (roofBeams + 1)) * i;
+    addContainerPart(group, width, t * 0.75, t, x + width / 2, yTop, beamZ, material);
+  }
+}
+
+function addContainerCorrugation(group, x, z, width, height, length, t, ribCount, material) {
+  const usableHeight = Math.max(t * 2, height - t * 3);
+  for (let i = 1; i < ribCount; i++) {
+    const ribZ = z + (length / ribCount) * i;
+    addContainerPart(group, t * 0.65, usableHeight, t * 0.9, x + t * 1.18, height / 2, ribZ, material);
+    addContainerPart(group, t * 0.65, usableHeight, t * 0.9, x + width - t * 1.18, height / 2, ribZ, material);
+  }
+}
+
+function addContainerDoors(group, x, z, width, height, length, t, material) {
+  const doorZ = z + length - t * 1.75;
+  addContainerPart(group, t * 0.7, height - t * 2.5, t * 0.75, x + width / 2, height / 2, doorZ, material);
+  addContainerPart(group, width - t * 3, t * 0.55, t * 0.75, x + width / 2, height * 0.35, doorZ, material);
+  addContainerPart(group, width - t * 3, t * 0.55, t * 0.75, x + width / 2, height * 0.68, doorZ, material);
+
+  const hingeX = [x + t * 2.1, x + width - t * 2.1];
+  hingeX.forEach(px => {
+    addContainerPart(group, t * 0.7, height * 0.72, t * 0.8, px, height / 2, doorZ - t * 0.3, material);
+  });
 }
 
 function drawBoxes(packed, offset, opts = { clear: true }) {
@@ -759,10 +862,11 @@ function drawBoxes(packed, offset, opts = { clear: true }) {
   packed.forEach((b, idx) => {
     const boxKey = b.boxKey || getBoxKey(b, idx, opts.containerId || selectedContainerId);
     const g = new THREE.BoxGeometry(b.width * scale, b.height * scale, b.length * scale);
+    const color = new THREE.Color(b.color || randomColor());
     const m = new THREE.MeshStandardMaterial({
-      color: b.color || randomColor(),
-      roughness: 0.32,
-      metalness: 0.35,
+      color,
+      roughness: 0.38,
+      metalness: 0.18,
       envMapIntensity: 1.1,
       emissive: boxKey === selectedBoxKey ? 0xffd166 : 0x000000,
       emissiveIntensity: boxKey === selectedBoxKey ? 0.35 : 0
@@ -782,11 +886,101 @@ function drawBoxes(packed, offset, opts = { clear: true }) {
       order: b.order || idx + 1
     };
     mesh.userData.boxKey = boxKey;
+    mesh.userData.baseColor = color.getHex();
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(g),
+      new THREE.LineBasicMaterial({
+        color: boxKey === selectedBoxKey ? 0xffd166 : 0xe7f7ff,
+        transparent: true,
+        opacity: boxKey === selectedBoxKey ? 1 : 0.42
+      })
+    );
+    edges.userData.isBoxEdge = true;
+    mesh.add(edges);
+
+    const label = createTextSprite(buildBoxLabel(mesh.userData.box), {
+      background: boxKey === selectedBoxKey ? 'rgba(255, 209, 102, 0.92)' : 'rgba(15, 23, 42, 0.78)',
+      color: boxKey === selectedBoxKey ? '#111827' : '#f8fbff',
+      border: boxKey === selectedBoxKey ? '#ffffff' : '#7dd3fc',
+      fontSize: 23,
+      scaleFactor: 0.32,
+      maxWidth: 82
+    });
+    label.position.set(0, b.height * scale / 2 + 24, 0);
+    label.userData.isBoxLabel = true;
+    mesh.add(label);
+
+    if (opts.latestIndex === idx) {
+      mesh.material.emissive.setHex(0x22d3ee);
+      mesh.material.emissiveIntensity = 0.38;
+      edges.material.color.setHex(0x67e8f9);
+      edges.material.opacity = 1;
+      mesh.scale.set(1.02, 1.02, 1.02);
+    }
+
     scene.add(mesh);
     boxMeshes.set(boxKey, mesh);
   });
+}
+
+function createTextSprite(text, options = {}) {
+  text = String(text || ' ');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const fontSize = options.fontSize || 30;
+  const paddingX = 18;
+  const paddingY = 10;
+  ctx.font = `700 ${fontSize}px Space Grotesk, Arial, sans-serif`;
+  const textWidth = Math.ceil(ctx.measureText(text).width);
+  canvas.width = textWidth + paddingX * 2;
+  canvas.height = fontSize + paddingY * 2;
+
+  ctx.font = `700 ${fontSize}px Space Grotesk, Arial, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = options.background || 'rgba(15, 23, 42, 0.78)';
+  roundRect(ctx, 0, 0, canvas.width, canvas.height, 10);
+  ctx.fill();
+  ctx.strokeStyle = options.border || '#67e8f9';
+  ctx.lineWidth = 3;
+  roundRect(ctx, 1.5, 1.5, canvas.width - 3, canvas.height - 3, 9);
+  ctx.stroke();
+  ctx.fillStyle = options.color || '#f8fbff';
+  ctx.fillText(text, paddingX, canvas.height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false
+  });
+  const sprite = new THREE.Sprite(material);
+  const scaleFactor = options.scaleFactor || 0.34;
+  const maxWidth = options.maxWidth || 96;
+  const spriteWidth = Math.min(maxWidth, Math.max(34, canvas.width * scaleFactor));
+  const spriteHeight = Math.max(16, canvas.height * scaleFactor);
+  sprite.scale.set(spriteWidth, spriteHeight, 1);
+  return sprite;
+}
+
+function roundRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 function getBoxKey(box, index, containerId = selectedContainerId) {
@@ -797,22 +991,25 @@ function getBoxKey(box, index, containerId = selectedContainerId) {
 }
 
 function focusCamera(containerList, offsets) {
-  if (!containerList.length) return;
-  let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity, maxDim = 0, maxY = 0;
-  containerList.forEach((c, idx) => {
-    const off = offsets[idx];
-    minX = Math.min(minX, off.x);
-    minZ = Math.min(minZ, off.z);
-    maxX = Math.max(maxX, off.x + c.width * scale);
-    maxZ = Math.max(maxZ, off.z + c.length * scale);
-    maxDim = Math.max(maxDim, c.width, c.height, c.length);
-    maxY = Math.max(maxY, c.height * scale);
-  });
-  const centerX = (minX + maxX) / 2;
-  const centerZ = (minZ + maxZ) / 2;
-  const distance = Math.max(maxX - minX, maxZ - minZ, maxDim * scale) * 1.8;
-  camera.position.set(centerX + distance, maxY + distance * 0.5, centerZ + distance);
-  controls.target.set(centerX, maxY / 2, centerZ);
+  const placement = getCameraPlacement(containerList, offsets, 'iso', scale);
+  camera.position.set(placement.position.x, placement.position.y, placement.position.z);
+  controls.target.set(placement.target.x, placement.target.y, placement.target.z);
+  controls.update();
+}
+
+function setCameraView(view = 'iso') {
+  if (activeViewMode !== '3d') switchViewMode('3d');
+  const expanded = expandContainers(containers);
+  const list = selectedContainerId === '__all__' && expanded.length > 1
+    ? expanded
+    : [expanded.find(c => c.id === selectedContainerId) || expanded[0]].filter(Boolean);
+  const offsets = selectedContainerId === '__all__' && expanded.length > 1
+    ? computeOffsets(expanded)
+    : [{ x: 0, z: 0 }];
+  if (!list.length) return;
+  const placement = getCameraPlacement(list, offsets, view, scale);
+  camera.position.set(placement.position.x, placement.position.y, placement.position.z);
+  controls.target.set(placement.target.x, placement.target.y, placement.target.z);
   controls.update();
 }
 
@@ -964,14 +1161,29 @@ function projectBox(box, mode) {
 
 function onCanvasClick(event) {
   if (!raycaster || !pointer || activeViewMode !== '3d') return;
+  const hits = getBoxHitsFromPointer(event);
+  if (hits[0]?.object?.userData?.box) {
+    selectBox(hits[0].object.userData.box);
+  }
+}
+
+function onCanvasPointerMove(event) {
+  if (!raycaster || !pointer || activeViewMode !== '3d') return;
+  const hits = getBoxHitsFromPointer(event);
+  const nextHoverKey = hits[0]?.object?.userData?.boxKey || null;
+  if (nextHoverKey !== hoveredBoxKey) {
+    hoveredBoxKey = nextHoverKey;
+    highlightSelectedBox();
+  }
+  renderer.domElement.style.cursor = nextHoverKey ? 'pointer' : 'grab';
+}
+
+function getBoxHitsFromPointer(event) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(Array.from(boxMeshes.values()), false);
-  if (hits[0]?.object?.userData?.box) {
-    selectBox(hits[0].object.userData.box);
-  }
+  return raycaster.intersectObjects(Array.from(boxMeshes.values()), false);
 }
 
 function selectBox(box, opts = {}) {
@@ -992,9 +1204,20 @@ function selectBox(box, opts = {}) {
 function highlightSelectedBox() {
   boxMeshes.forEach((mesh, key) => {
     if (!mesh.material?.emissive) return;
-    const active = key === selectedBoxKey;
-    mesh.material.emissive.setHex(active ? 0xffd166 : 0x000000);
-    mesh.material.emissiveIntensity = active ? 0.35 : 0;
+    const selected = key === selectedBoxKey;
+    const hovered = key === hoveredBoxKey;
+    mesh.material.emissive.setHex(selected ? 0xffd166 : hovered ? 0x67e8f9 : 0x000000);
+    mesh.material.emissiveIntensity = selected ? 0.5 : hovered ? 0.24 : 0;
+    mesh.scale.setScalar(selected ? 1.035 : hovered ? 1.018 : 1);
+    mesh.children.forEach(child => {
+      if (child.userData?.isBoxEdge && child.material) {
+        child.material.color.setHex(selected ? 0xffd166 : hovered ? 0x67e8f9 : 0xe7f7ff);
+        child.material.opacity = selected || hovered ? 1 : 0.42;
+      }
+      if (child.userData?.isBoxLabel && child.material) {
+        child.material.opacity = selected || hovered ? 1 : 0.78;
+      }
+    });
   });
 }
 
@@ -1240,7 +1463,12 @@ function applyStepIndex(nextIndex) {
   if (activeViewMode === '3d') {
     clearDrawnObjects();
     drawContainer(res.container, { x: 0, z: 0 });
-    drawBoxes(stepPacked, { x: 0, z: 0 }, { clear: false, containerId: selectedContainerId, containerName: res.container.name });
+    drawBoxes(stepPacked, { x: 0, z: 0 }, {
+      clear: false,
+      containerId: selectedContainerId,
+      containerName: res.container.name,
+      latestIndex: stepPacked.length - 1
+    });
   } else {
     drawPlanView([res.container], stepPacked, activeViewMode);
   }
@@ -1355,7 +1583,7 @@ function onBoxFileChange(e) {
 
   reader.onload = evt => {
     try {
-      let imported = [];
+      let imported = { boxes: [], skipped: 0 };
       if (ext === 'json') {
         imported = parseBoxJSON(evt.target.result);
       } else if (ext === 'csv') {
@@ -1366,15 +1594,18 @@ function onBoxFileChange(e) {
         showModal('Lỗi', 'Định dạng file không hỗ trợ.', 'danger');
         return;
       }
-      if (!imported.length) {
-        showModal('Thông báo', 'Không đọc được hộp từ file.', 'warning');
+      if (!imported.boxes.length) {
+        const skippedMessage = imported.skipped ? ` Đã bỏ qua ${imported.skipped} dòng lỗi.` : '';
+        showModal('Thông báo', `Không đọc được hộp từ file.${skippedMessage}`, 'warning');
         return;
       }
-      imported.forEach(b => boxes.push(b));
+      boxes = imported.boxes;
       clearPackingResults();
       updateBoxList();
       renderPreview();
-      showModal('Thành công', `Đã nhập ${imported.length} dòng hộp.`, 'success');
+      updateDashboardStats();
+      const skippedMessage = imported.skipped ? `, bỏ qua ${imported.skipped} dòng lỗi` : '';
+      showModal('Thành công', `Đã nhập ${imported.boxes.length} dòng hộp${skippedMessage}.`, 'success');
     } catch (err) {
       showModal('Lỗi', 'Không thể đọc file hộp.', 'danger');
     } finally {
@@ -1449,15 +1680,15 @@ function normalizeContainerRecord(rec) {
 
 function parseBoxJSON(text) {
   const arr = JSON.parse(text);
-  if (!Array.isArray(arr)) return [];
-  return arr.map(n => normalizeBoxRecord(n)).filter(Boolean);
+  if (!Array.isArray(arr)) return { boxes: [], skipped: 0 };
+  return parseBoxRows(arr);
 }
 
 function parseBoxCSV(text) {
   const lines = text.split(/\r?\n/).filter(Boolean);
-  if (!lines.length) return [];
+  if (!lines.length) return { boxes: [], skipped: 0 };
   const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const hasHeader = headers.some(h => ['width', 'height', 'length', 'dai', 'rong', 'cao'].includes(h));
+  const hasHeader = headers.some(isBoxFieldKey);
   const records = [];
   const startIdx = hasHeader ? 1 : 0;
   for (let i = startIdx; i < lines.length; i++) {
@@ -1475,17 +1706,16 @@ function parseBoxCSV(text) {
       rec.weight = cols[5];
       rec.stackable = cols[6];
     }
-    const normalized = normalizeBoxRecord(rec);
-    if (normalized) records.push(normalized);
+    records.push(rec);
   }
-  return records;
+  return parseBoxRows(records);
 }
 
 function parseBoxXLSX(binary) {
   const wb = XLSX.read(binary, { type: 'binary' });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const json = XLSX.utils.sheet_to_json(ws);
-  return json.map(row => normalizeBoxRecord(row)).filter(Boolean);
+  const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  return parseBoxRows(json);
 }
 
 function getAllPackedRows() {
@@ -1572,30 +1802,6 @@ function renderOptimizationInsights(results, leftover, packingOptions) {
   }
 
   optimizationInsights.innerHTML = messages.join('');
-}
-
-function normalizeBoxRecord(rec) {
-  if (!rec) return null;
-  const length = parseFloat(rec.length || rec.dai || rec.chieudai);
-  const width = parseFloat(rec.width || rec.rong || rec.chieurong);
-  const height = parseFloat(rec.height || rec.cao || rec.chieucao);
-  const quantity = Math.max(1, parseInt(rec.quantity || rec.so_luong || rec.sl || 1, 10));
-  if ([width, height, length].some(v => isNaN(v) || v <= 0)) return null;
-  const weight = parseFloat(rec.weight ?? rec.khoi_luong) || 0;
-  const color = rec.color || rec.mau || randomColor();
-  const stackableRaw = rec.stackable ?? rec.xepchong ?? rec.stack ?? rec.stk;
-  const stackable = typeof stackableRaw === 'string'
-    ? ['1', 'true', 'yes', 'y', 'ok', 'x'].includes(stackableRaw.toLowerCase())
-    : stackableRaw === undefined || Boolean(stackableRaw);
-  return {
-    width,
-    height,
-    length,
-    quantity,
-    color,
-    weight,
-    stackable
-  };
 }
 
 // Reset

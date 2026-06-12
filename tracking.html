@@ -2,267 +2,1193 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Theo Dõi Đơn Hàng - Box3D Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control Tower Vận Tải - Box3D Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { background:#0f182a; color:#f5f7ff; }
-    .card { background:#18243a; border:1px solid rgba(255,255,255,0.12); color:#fff; }
-    .card-header { background:rgba(255,255,255,0.08); border-bottom:1px solid rgba(255,255,255,0.12); color:#fff; font-weight:700; }
-    .badge-soft { background:rgba(255,255,255,0.12); color:#dfe7ff; border-radius:999px; padding:4px 10px; font-size:12px; }
-    .timeline { position:relative; padding-left:24px; }
-    .timeline::before { content:''; position:absolute; left:8px; top:0; bottom:0; width:2px; background:#4fb2ff; }
-    .timeline-item { position:relative; padding:10px 0 10px 16px; }
-    .timeline-item::before { content:''; position:absolute; left:-4px; top:14px; width:10px; height:10px; border-radius:50%; background:#4fb2ff; box-shadow:0 0 0 4px rgba(79,178,255,0.2); }
-    .timeline-item small { color:#cdd7f3; }
-    .status-dot { width:12px; height:12px; border-radius:50%; display:inline-block; margin-right:6px; }
-    .table { color:#0f172a; background:#fff; }
-    .table thead { background:#eef3ff; color:#0b1324; font-weight:800; }
-    .pill { padding:6px 12px; border-radius:999px; background:rgba(255,255,255,0.1); color:#dfe7ff; }
+    :root {
+      --page: #eef3f8;
+      --surface: #ffffff;
+      --surface-soft: #f7fafc;
+      --sidebar: #17212b;
+      --border: #d8e1ea;
+      --text: #17212b;
+      --muted: #65758a;
+      --primary: #0f8aa6;
+      --primary-strong: #0b6f86;
+      --green: #169b73;
+      --yellow: #d89412;
+      --danger: #d94a4a;
+      --pink: #d9467c;
+      --shadow: 0 14px 34px rgba(16, 24, 32, 0.1);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--page);
+      color: var(--text);
+      font-family: 'Space Grotesk', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 15px;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 22px 16px;
+      background: var(--sidebar);
+      color: #f8fbff;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 8px 18px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .logo h3 {
+      margin: 0;
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      padding: 10px 12px;
+      color: #dce7f2;
+      border-radius: 8px;
+      font-weight: 700;
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      color: #ffffff;
+      background: rgba(15, 138, 166, 0.28);
+    }
+
+    .main-content {
+      min-width: 0;
+      padding: 24px;
+    }
+
+    .hero,
+    .panel,
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      color: #101820;
+      font-size: 28px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill,
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      padding: 6px 10px;
+      background: #eef8fb;
+      border: 1px solid #cfe7ee;
+      border-radius: 8px;
+      color: #0b6f86;
+      font-size: 0.86rem;
+      font-weight: 800;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 82px;
+      padding: 14px;
+    }
+
+    .stat-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 42px;
+      height: 42px;
+      color: #ffffff;
+      border-radius: 8px;
+      font-size: 18px;
+    }
+
+    .stat-card small {
+      display: block;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .stat-card strong {
+      display: block;
+      margin-top: 2px;
+      color: var(--text);
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .accent-blue { background: var(--primary); }
+    .accent-green { background: var(--green); }
+    .accent-yellow { background: var(--yellow); }
+    .accent-red { background: var(--danger); }
+
+    .tracking-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.75fr) minmax(440px, 1.45fr) minmax(300px, 0.9fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      min-height: 52px;
+      padding: 12px 16px;
+      background: var(--surface-soft);
+      border-bottom: 1px solid var(--border);
+      font-weight: 800;
+    }
+
+    .panel-body {
+      padding: 14px;
+    }
+
+    .trip-list {
+      display: grid;
+      gap: 10px;
+      max-height: 580px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .trip-card {
+      width: 100%;
+      padding: 12px;
+      text-align: left;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      transition: border 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .trip-card:hover,
+    .trip-card.active {
+      border-color: #33b7d0;
+      box-shadow: 0 10px 22px rgba(15, 138, 166, 0.14);
+    }
+
+    .trip-main {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .trip-main strong {
+      display: block;
+      color: #101820;
+      font-size: 0.98rem;
+      line-height: 1.2;
+    }
+
+    .trip-main span,
+    .muted {
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 26px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .status-running,
+    .status-online,
+    .status-on-time {
+      color: #075f48;
+      background: #dcfce7;
+    }
+
+    .status-risk,
+    .status-stale,
+    .status-at-risk {
+      color: #8a5b00;
+      background: #fef3c7;
+    }
+
+    .status-late,
+    .status-lost,
+    .status-danger {
+      color: #9f1d1d;
+      background: #fee2e2;
+    }
+
+    .status-info {
+      color: #0b5d72;
+      background: #e0f2fe;
+    }
+
+    #map {
+      width: 100%;
+      height: 480px;
+      background: #d9e5ec;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(92px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .telemetry-item {
+      padding: 10px;
+      background: #f8fbfd;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .telemetry-item small {
+      display: block;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+
+    .telemetry-item strong {
+      display: block;
+      color: #101820;
+      font-size: 1rem;
+      line-height: 1.15;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 8px 12px;
+      font-size: 0.94rem;
+    }
+
+    .detail-grid span {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .detail-grid strong {
+      color: #101820;
+    }
+
+    .alert-list,
+    .timeline,
+    .gps-feed {
+      display: grid;
+      gap: 9px;
+    }
+
+    .alert-item,
+    .timeline-item,
+    .pod-box,
+    .feed-row {
+      padding: 10px;
+      background: #f8fbfd;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .alert-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      font-weight: 700;
+    }
+
+    .alert-item i { margin-top: 2px; }
+    .alert-danger i { color: var(--danger); }
+    .alert-warning i { color: var(--yellow); }
+    .alert-info i { color: var(--primary); }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      gap: 10px;
+      position: relative;
+    }
+
+    .timeline-time {
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .timeline-title {
+      color: #101820;
+      font-weight: 800;
+    }
+
+    .table {
+      margin: 0;
+      color: #101820;
+      vertical-align: middle;
+    }
+
+    .table thead {
+      background: #f3f7fb;
+      color: #101820;
+      font-weight: 800;
+    }
+
+    .vehicle-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      color: #ffffff;
+      background: #0f8aa6;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.24);
+    }
+
+    .route-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      color: #ffffff;
+      background: #169b73;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, 0.22);
+    }
+
+    .route-marker.destination {
+      background: #d9467c;
+    }
+
+    .pod-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .pod-box {
+      min-height: 92px;
+    }
+
+    .pod-box i {
+      color: var(--primary);
+      margin-right: 6px;
+    }
+
+    @media (max-width: 1180px) {
+      .tracking-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .trip-list {
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+      }
+
+      .main-content {
+        padding: 14px;
+      }
+
+      .hero {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .hero-actions,
+      .hero-actions .form-control {
+        width: 100%;
+      }
+
+      .stats-grid,
+      .telemetry-grid,
+      .pod-grid {
+        grid-template-columns: 1fr;
+      }
+
+      #map {
+        height: 360px;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="d-flex">
-    <!-- Sidebar -->
-    <div class="sidebar flex-shrink-0 p-3" style="width: 280px; background: linear-gradient(180deg, #455393, #3f37c9); color: white; min-height:100vh;">
+  <div class="app-shell">
+    <aside class="sidebar">
       <div class="logo">
-        <h3><i class="fas fa-boxes me-2"></i>Box3D Manager</h3>
+        <i class="fas fa-cubes fs-4 text-info"></i>
+        <h3>Box3D Manager</h3>
       </div>
       <ul class="nav flex-column">
-        <li class="nav-item">
-          <a class="nav-link" href="index.html">
-            <i class="fas fa-tachometer-alt"></i> Trang chủ
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="index.html#dashboardLink">
-            <i class="fas fa-cube"></i> Bảng Điều Khiển
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="index.html#containerInfoLink">
-            <i class="fas fa-info-circle"></i> Thông Tin Container
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link" href="index.html#boxMgmtLink">
-            <i class="fas fa-box"></i> Quản Lý Hộp
-          </a>
-        </li>
-        <li class="nav-item">
-          <a class="nav-link active" href="tracking.html" id="trackingLink">
-            <i class="fas fa-truck"></i> Theo Dõi
-          </a>
-        </li>
-        <li class="nav-item mt-4">
-          <a class="nav-link" href="#">
-            <i class="fas fa-sign-out-alt"></i> Đăng xuất
-          </a>
-        </li>
+        <li class="nav-item"><a class="nav-link" href="index.html"><i class="fas fa-tachometer-alt"></i> Trang chủ</a></li>
+        <li class="nav-item"><a class="nav-link" href="index.html#threeD-container"><i class="fas fa-cube"></i> Trình 3D</a></li>
+        <li class="nav-item"><a class="nav-link" href="index.html#containerSection"><i class="fas fa-box-open"></i> Container</a></li>
+        <li class="nav-item"><a class="nav-link" href="index.html#boxSection"><i class="fas fa-box"></i> Hộp hàng</a></li>
+        <li class="nav-item"><a class="nav-link active" href="tracking.html"><i class="fas fa-truck"></i> Theo dõi</a></li>
       </ul>
-    </div>
-    <!-- Main Content -->
-    <div class="main-content p-4" style="width:100%;">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <div class="pill mb-1">Track & Trace</div>
-          <h2 class="mb-0"><i class="fas fa-truck me-2"></i>Theo dõi đơn hàng</h2>
-        </div>
-        <div class="d-flex gap-2">
-          <input type="text" id="trackingInput" class="form-control form-control-sm" placeholder="Nhập mã đơn / mã hộp (VD: BOX001)" style="width:240px;">
-          <button class="btn btn-primary btn-sm" id="trackingSearch"><i class="fas fa-search me-1"></i>Tra cứu</button>
-        </div>
+      <div class="mt-4">
+        <span class="tag"><i class="fas fa-satellite-dish"></i> GPS realtime</span>
       </div>
+    </aside>
 
-      <div class="row g-3">
-        <div class="col-lg-8">
-          <div class="card mb-3">
-            <div class="card-header d-flex justify-content-between align-items-center">
-              <span><i class="fas fa-map-marked-alt me-2"></i>Hành trình</span>
-              <span class="badge-soft" id="currentStatusBadge">Đang xử lý</span>
+    <main class="main-content">
+      <section class="hero">
+        <div>
+          <div class="pill mb-2">Road Transport Control Tower</div>
+          <h1>Điều phối chuyến hàng GPS</h1>
+          <div class="d-flex gap-2 flex-wrap mt-2">
+            <span class="tag"><i class="fas fa-route"></i> Tuyến thực tế</span>
+            <span class="tag"><i class="fas fa-clock"></i> ETA / SLA</span>
+            <span class="tag"><i class="fas fa-file-signature"></i> POD</span>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <input type="text" id="trackingSearchInput" class="form-control" placeholder="Mã chuyến / đơn / biển số">
+          <button type="button" class="btn btn-primary" id="searchBtn"><i class="fas fa-search me-1"></i>Tra cứu</button>
+          <button type="button" class="btn btn-outline-secondary" id="liveToggleBtn"><i class="fas fa-pause me-1"></i>Tạm dừng GPS</button>
+        </div>
+      </section>
+
+      <section class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-icon accent-blue"><i class="fas fa-truck-moving"></i></span>
+          <div><small>Chuyến đang chạy</small><strong id="statActiveTrips">0</strong></div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon accent-green"><i class="fas fa-check-circle"></i></span>
+          <div><small>Đúng SLA</small><strong id="statOnTime">0</strong></div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon accent-yellow"><i class="fas fa-triangle-exclamation"></i></span>
+          <div><small>Nguy cơ trễ</small><strong id="statRisk">0</strong></div>
+        </div>
+        <div class="stat-card">
+          <span class="stat-icon accent-red"><i class="fas fa-bell"></i></span>
+          <div><small>Cảnh báo mở</small><strong id="statAlerts">0</strong></div>
+        </div>
+      </section>
+
+      <section class="tracking-grid">
+        <div>
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="fas fa-list-check me-2"></i>Danh sách chuyến</span>
+              <span class="status-badge status-info" id="tripCountBadge">0 chuyến</span>
             </div>
-            <div class="card-body">
-              <div id="map" style="height: 320px; border-radius: 12px;"></div>
+            <div class="panel-body">
+              <div class="d-flex gap-2 mb-3">
+                <select id="statusFilter" class="form-select form-select-sm">
+                  <option value="all">Tất cả</option>
+                  <option value="running">Đang chạy</option>
+                  <option value="risk">Có cảnh báo</option>
+                  <option value="late">Trễ SLA</option>
+                </select>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="resetFilterBtn"><i class="fas fa-rotate"></i></button>
+              </div>
+              <div class="trip-list" id="tripList"></div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-header">
-              <i class="fas fa-route me-2"></i>Tiến trình đơn hàng
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="fas fa-satellite-dish me-2"></i>GPS feed</span>
+              <span class="status-badge status-online" id="feedBadge">Live</span>
             </div>
-            <div class="card-body">
+            <div class="panel-body">
+              <div class="gps-feed" id="gpsFeed"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="fas fa-map-location-dot me-2"></i>Bản đồ hành trình</span>
+              <span class="status-badge" id="slaBadge">SLA</span>
+            </div>
+            <div class="panel-body">
+              <div id="map"></div>
+              <div class="telemetry-grid">
+                <div class="telemetry-item"><small>Tốc độ</small><strong id="speedValue">-</strong></div>
+                <div class="telemetry-item"><small>GPS</small><strong id="gpsHealthValue">-</strong></div>
+                <div class="telemetry-item"><small>ETA</small><strong id="etaValue">-</strong></div>
+                <div class="telemetry-item"><small>Còn lại</small><strong id="remainingValue">-</strong></div>
+                <div class="telemetry-item"><small>Lệch tuyến</small><strong id="deviationValue">-</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="fas fa-clock-rotate-left me-2"></i>Timeline vận hành</span>
+              <span class="status-badge status-info" id="eventCountBadge">0 mốc</span>
+            </div>
+            <div class="panel-body">
               <div class="timeline" id="timeline"></div>
             </div>
           </div>
         </div>
-        <div class="col-lg-4">
-          <div class="card mb-3">
-            <div class="card-header">
-              <i class="fas fa-receipt me-2"></i>Thông tin đơn
+
+        <div>
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="fas fa-circle-info me-2"></i>Chi tiết chuyến</span>
+              <span class="status-badge status-running" id="tripStatusBadge">Đang chạy</span>
             </div>
-            <div class="card-body">
-              <div class="mb-2"><span class="text-muted small">Mã đơn:</span> <strong id="orderCode">BOX001</strong></div>
-              <div class="mb-2"><span class="text-muted small">Khách:</span> <strong id="customerName">Nguyễn Văn A</strong></div>
-              <div class="mb-2"><span class="text-muted small">Địa chỉ:</span> <span id="orderAddress">Kho A → Kho B</span></div>
-              <div class="d-flex gap-2 flex-wrap mt-3">
-                <span class="badge-soft"><span class="status-dot" style="background:#4fb2ff"></span>Đang giao</span>
-                <span class="badge-soft"><span class="status-dot" style="background:#7ee0b4"></span>Đã lấy hàng</span>
-                <span class="badge-soft"><span class="status-dot" style="background:#fcd34d"></span>Đang trung chuyển</span>
+            <div class="panel-body">
+              <div class="detail-grid">
+                <span>Mã chuyến</span><strong id="tripCode">-</strong>
+                <span>Xe</span><strong id="vehicleNo">-</strong>
+                <span>Tài xế</span><strong id="driverName">-</strong>
+                <span>Tuyến</span><strong id="routeName">-</strong>
+                <span>Đơn hàng</span><strong id="orderSummary">-</strong>
+                <span>SLA</span><strong id="slaTime">-</strong>
               </div>
             </div>
           </div>
-          <div class="card">
-            <div class="card-header">
-              <i class="fas fa-box-open me-2"></i>Danh sách kiện
+
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="fas fa-bell me-2"></i>Cảnh báo vận hành</span>
+              <span class="status-badge status-info" id="alertCountBadge">0</span>
             </div>
-            <div class="card-body p-0">
-              <table class="table table-bordered mb-0">
-                <thead>
-                  <tr>
-                    <th>Hộp</th>
-                    <th>Trạng thái</th>
-                    <th>Time</th>
-                  </tr>
-                </thead>
-                <tbody id="boxTableBody"></tbody>
-              </table>
+            <div class="panel-body">
+              <div class="alert-list" id="alertList"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="fas fa-file-signature me-2"></i>POD / Chứng từ</span>
+              <span class="status-badge status-info" id="podStatusBadge">Đang chờ</span>
+            </div>
+            <div class="panel-body">
+              <div class="pod-grid" id="podGrid"></div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <span><i class="fas fa-boxes-stacked me-2"></i>Đơn hàng trên chuyến</span>
+          <span class="status-badge status-info" id="ordersBadge">0 đơn</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-bordered">
+            <thead>
+              <tr>
+                <th>Mã đơn</th>
+                <th>Khách</th>
+                <th>Điểm giao</th>
+                <th>Kiện</th>
+                <th>Trạng thái</th>
+                <th>SLA</th>
+              </tr>
+            </thead>
+            <tbody id="ordersTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    const mockOrders = {
-      'BOX001': {
-        code: 'BOX001',
-        customer: 'Nguyễn Văn A',
-        address: 'Kho A - Hà Nội → Kho B - HCM',
-        status: 'Đang giao',
-        boxes: [
-          { id: 'BOX001', status: 'Đang giao', time: '10:15', lat: 20.98, lng: 105.85 },
-          { id: 'BOX002', status: 'Đã lấy', time: '08:00', lat: 21.03, lng: 105.85 },
-        ],
-        timeline: [
-          { title: 'Đã tạo đơn', time: '07:30', desc: 'Người gửi tạo đơn' },
-          { title: 'Đã lấy hàng', time: '08:00', desc: 'Tài xế đã lấy hàng' },
-          { title: 'Đang trung chuyển', time: '09:00', desc: 'Hàng trên xe trung chuyển' },
-          { title: 'Đang giao', time: '10:15', desc: 'Tài xế đang giao' },
-        ],
-        route: [
+  <script type="module">
+    import {
+      addMinutes,
+      buildTripAlerts,
+      estimateEtaMinutes,
+      formatDateTime,
+      getGpsHealth,
+      getSlaStatus,
+      haversineDistanceKm,
+      routeDistanceKm
+    } from './src/trackingLogic.js';
+
+    const now = () => new Date();
+    const minutesFromNow = minutes => addMinutes(now(), minutes).toISOString();
+
+    const trips = [
+      {
+        id: 'TRIP-HN-HP-018',
+        vehicleNo: '29H-123.45',
+        driver: 'Nguyen Van Nam',
+        phone: '0912 345 678',
+        routeName: 'Ha Noi - Hai Phong',
+        origin: 'Kho Long Bien',
+        destination: 'KCN Dinh Vu',
+        status: 'Đang chạy',
+        priority: 'Giao trong ngày',
+        speedKmh: 58,
+        stoppedMinutes: 0,
+        deviationKm: 0.4,
+        gpsLastAt: minutesFromNow(-2),
+        slaAt: minutesFromNow(115),
+        podStatus: 'pending',
+        plannedRoute: [
           [21.0285, 105.8542],
-          [20.98, 105.85],
-          [16.0471, 108.2062],
-          [10.8231, 106.6297],
+          [21.005, 106.04],
+          [20.92, 106.28],
+          [20.86, 106.48],
+          [20.8449, 106.6881]
+        ],
+        gpsIndex: 2,
+        actualRouteFull: [
+          [21.0285, 105.8542],
+          [21.015, 105.95],
+          [21.002, 106.06],
+          [20.95, 106.19],
+          [20.91, 106.31],
+          [20.875, 106.49],
+          [20.8449, 106.6881]
+        ],
+        events: [
+          { time: minutesFromNow(-160), title: 'Đã phân xe', desc: 'Điều phối gán xe 29H-123.45' },
+          { time: minutesFromNow(-132), title: 'Tài xế đến kho', desc: 'Check-in kho Long Biên' },
+          { time: minutesFromNow(-118), title: 'Đã bốc hàng', desc: '18 kiện, 2 pallet' },
+          { time: minutesFromNow(-103), title: 'Xe rời kho', desc: 'GPS bắt đầu ghi hành trình' }
+        ],
+        orders: [
+          { code: 'ORD-HP-1024', customer: 'Minh Phat JSC', stop: 'KCN Dinh Vu', boxes: 12, status: 'Trên xe', slaAt: minutesFromNow(115) },
+          { code: 'ORD-HP-1025', customer: 'An Hai Food', stop: 'Hai An', boxes: 6, status: 'Trên xe', slaAt: minutesFromNow(95) }
+        ],
+        pod: [
+          { title: 'Ảnh lấy hàng', value: 'Đã có 4 ảnh' },
+          { title: 'Biên bản bàn giao', value: 'Đã xác nhận kho' },
+          { title: 'Chữ ký người nhận', value: 'Chưa có' },
+          { title: 'Ảnh giao hàng', value: 'Chưa có' }
         ]
       },
-      'BOX123': {
-        code: 'BOX123',
-        customer: 'Trần Thị B',
-        address: 'Kho C → Kho D',
+      {
+        id: 'TRIP-HN-BN-044',
+        vehicleNo: '30C-567.89',
+        driver: 'Tran Duc Anh',
+        phone: '0988 111 222',
+        routeName: 'Ha Noi - Bac Ninh',
+        origin: 'Kho Gia Lam',
+        destination: 'VSIP Bac Ninh',
+        status: 'Đang giao',
+        priority: 'SLA 2 giờ',
+        speedKmh: 18,
+        stoppedMinutes: 38,
+        deviationKm: 2.6,
+        gpsLastAt: minutesFromNow(-14),
+        slaAt: minutesFromNow(35),
+        podStatus: 'pending',
+        plannedRoute: [
+          [21.0285, 105.8542],
+          [21.08, 105.96],
+          [21.12, 106.06],
+          [21.147, 106.103]
+        ],
+        gpsIndex: 1,
+        actualRouteFull: [
+          [21.0285, 105.8542],
+          [21.078, 105.934],
+          [21.092, 105.985],
+          [21.118, 106.04],
+          [21.147, 106.103]
+        ],
+        events: [
+          { time: minutesFromNow(-95), title: 'Đã phân xe', desc: 'Tuyến ưu tiên giao nhanh' },
+          { time: minutesFromNow(-82), title: 'Rời kho', desc: 'Bắt đầu chuyến Bac Ninh' },
+          { time: minutesFromNow(-38), title: 'Xe dừng lâu', desc: 'Dừng tại Quốc lộ 1A' }
+        ],
+        orders: [
+          { code: 'ORD-BN-889', customer: 'Song Hong Tech', stop: 'VSIP Bac Ninh', boxes: 9, status: 'Đang giao', slaAt: minutesFromNow(35) }
+        ],
+        pod: [
+          { title: 'Ảnh lấy hàng', value: 'Đã có 2 ảnh' },
+          { title: 'Seal xe', value: 'Đã ghi nhận' },
+          { title: 'Chữ ký người nhận', value: 'Chưa có' },
+          { title: 'Ảnh giao hàng', value: 'Chưa có' }
+        ]
+      },
+      {
+        id: 'TRIP-HN-HCM-006',
+        vehicleNo: '51D-777.12',
+        driver: 'Le Quang Huy',
+        phone: '0903 222 999',
+        routeName: 'Ha Noi - Ho Chi Minh',
+        origin: 'Kho Ha Noi',
+        destination: 'Kho Binh Tan',
         status: 'Đang trung chuyển',
-        boxes: [
-          { id: 'BOX123', status: 'Đang trung chuyển', time: '09:40', lat: 16.05, lng: 108.2 },
+        priority: 'Liên tỉnh',
+        speedKmh: 64,
+        stoppedMinutes: 0,
+        deviationKm: 0.8,
+        gpsLastAt: minutesFromNow(-36),
+        slaAt: minutesFromNow(980),
+        podStatus: 'pending',
+        plannedRoute: [
+          [21.0285, 105.8542],
+          [18.6796, 105.6813],
+          [16.0471, 108.2062],
+          [12.2388, 109.1967],
+          [10.8231, 106.6297]
         ],
-        timeline: [
-          { title: 'Đã tạo đơn', time: '08:10', desc: 'Người gửi tạo đơn' },
-          { title: 'Đã lấy hàng', time: '08:45', desc: 'Tài xế đã lấy hàng' },
-          { title: 'Đang trung chuyển', time: '09:40', desc: 'Xe đang di chuyển' },
+        gpsIndex: 2,
+        actualRouteFull: [
+          [21.0285, 105.8542],
+          [19.8, 105.8],
+          [18.7, 105.68],
+          [17.2, 106.5],
+          [16.0471, 108.2062],
+          [13.9, 109.0],
+          [10.8231, 106.6297]
         ],
-        route: [
-          [21.03, 105.85],
-          [16.05, 108.2],
-          [10.8, 106.6],
+        events: [
+          { time: minutesFromNow(-540), title: 'Đã lấy hàng', desc: 'Hoàn tất bốc hàng liên tỉnh' },
+          { time: minutesFromNow(-520), title: 'Rời kho', desc: 'Xe bắt đầu tuyến Bắc - Nam' },
+          { time: minutesFromNow(-120), title: 'Qua trạm trung chuyển', desc: 'Cập nhật tại Nghệ An' }
+        ],
+        orders: [
+          { code: 'ORD-HCM-332', customer: 'Binh Tan Retail', stop: 'Kho Binh Tan', boxes: 28, status: 'Trung chuyển', slaAt: minutesFromNow(980) },
+          { code: 'ORD-HCM-333', customer: 'Sai Gon Supply', stop: 'Quan 7', boxes: 16, status: 'Trung chuyển', slaAt: minutesFromNow(1040) }
+        ],
+        pod: [
+          { title: 'Ảnh lấy hàng', value: 'Đã có 7 ảnh' },
+          { title: 'Seal xe', value: 'S-20491' },
+          { title: 'Chữ ký người nhận', value: 'Chưa có' },
+          { title: 'Ảnh giao hàng', value: 'Chưa có' }
         ]
       }
-    };
+    ];
 
-    let map, routeLine;
-    const markers = {};
+    trips.forEach(trip => {
+      trip.actualRoute = trip.actualRouteFull.slice(0, trip.gpsIndex + 1);
+    });
+
+    let map;
+    let layerGroup;
+    let activeTripId = trips[0].id;
+    let liveEnabled = true;
+    let liveTimer = null;
 
     document.addEventListener('DOMContentLoaded', () => {
       initMap();
-      loadOrder('BOX001');
-      document.getElementById('trackingSearch').addEventListener('click', () => {
-        const code = document.getElementById('trackingInput').value.trim().toUpperCase();
-        loadOrder(code || 'BOX001');
-      });
-      document.getElementById('trackingInput').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') document.getElementById('trackingSearch').click();
-      });
+      bindEvents();
+      renderAll();
+      liveTimer = window.setInterval(tickGps, 4200);
     });
 
+    function bindEvents() {
+      document.getElementById('searchBtn').addEventListener('click', handleSearch);
+      document.getElementById('trackingSearchInput').addEventListener('keydown', event => {
+        if (event.key === 'Enter') handleSearch();
+      });
+      document.getElementById('statusFilter').addEventListener('change', renderTripList);
+      document.getElementById('resetFilterBtn').addEventListener('click', () => {
+        document.getElementById('statusFilter').value = 'all';
+        document.getElementById('trackingSearchInput').value = '';
+        renderTripList();
+      });
+      document.getElementById('liveToggleBtn').addEventListener('click', () => {
+        liveEnabled = !liveEnabled;
+        const btn = document.getElementById('liveToggleBtn');
+        btn.innerHTML = liveEnabled
+          ? '<i class="fas fa-pause me-1"></i>Tạm dừng GPS'
+          : '<i class="fas fa-play me-1"></i>Tiếp tục GPS';
+        document.getElementById('feedBadge').textContent = liveEnabled ? 'Live' : 'Paused';
+        document.getElementById('feedBadge').className = `status-badge ${liveEnabled ? 'status-online' : 'status-stale'}`;
+      });
+    }
+
     function initMap() {
-      map = L.map('map').setView([21.0285, 105.8542], 6);
+      map = L.map('map').setView([20.5, 106.1], 7);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap'
       }).addTo(map);
+      layerGroup = L.layerGroup().addTo(map);
     }
 
-    function loadOrder(code) {
-      const data = mockOrders[code];
-      if (!data) {
-        alert('Không tìm thấy đơn: ' + code);
+    function handleSearch() {
+      const keyword = document.getElementById('trackingSearchInput').value.trim().toUpperCase();
+      if (!keyword) return;
+      const found = trips.find(trip =>
+        trip.id.toUpperCase().includes(keyword) ||
+        trip.vehicleNo.toUpperCase().includes(keyword) ||
+        trip.driver.toUpperCase().includes(keyword) ||
+        trip.orders.some(order => order.code.toUpperCase().includes(keyword))
+      );
+      if (found) {
+        activeTripId = found.id;
+        renderAll();
+      }
+    }
+
+    function getActiveTrip() {
+      return trips.find(trip => trip.id === activeTripId) || trips[0];
+    }
+
+    function getCurrentPoint(trip) {
+      return trip.actualRoute[trip.actualRoute.length - 1] || trip.plannedRoute[0];
+    }
+
+    function getDestinationPoint(trip) {
+      return trip.plannedRoute[trip.plannedRoute.length - 1];
+    }
+
+    function getTripComputed(trip) {
+      const current = getCurrentPoint(trip);
+      const destination = getDestinationPoint(trip);
+      const remainingKm = haversineDistanceKm(current, destination);
+      const etaMinutes = estimateEtaMinutes(remainingKm, trip.speedKmh);
+      const etaAt = etaMinutes === null ? trip.slaAt : addMinutes(now(), etaMinutes).toISOString();
+      const gps = getGpsHealth(trip.gpsLastAt, now());
+      const slaStatus = getSlaStatus(etaAt, trip.slaAt);
+      const alerts = buildTripAlerts({ ...trip, etaAt }, now());
+      return { current, destination, remainingKm, etaMinutes, etaAt, gps, slaStatus, alerts };
+    }
+
+    function renderAll() {
+      renderStats();
+      renderTripList();
+      renderActiveTrip();
+    }
+
+    function renderStats() {
+      const computed = trips.map(getTripComputed);
+      document.getElementById('statActiveTrips').textContent = trips.length;
+      document.getElementById('statOnTime').textContent = computed.filter(item => item.slaStatus === 'on-time').length;
+      document.getElementById('statRisk').textContent = computed.filter(item => item.slaStatus === 'at-risk').length;
+      document.getElementById('statAlerts').textContent = computed.reduce((sum, item) => sum + item.alerts.length, 0);
+    }
+
+    function renderTripList() {
+      const filter = document.getElementById('statusFilter').value;
+      const keyword = document.getElementById('trackingSearchInput').value.trim().toUpperCase();
+      const list = document.getElementById('tripList');
+      list.innerHTML = '';
+
+      const filtered = trips.filter(trip => {
+        const computed = getTripComputed(trip);
+        const matchKeyword = !keyword ||
+          trip.id.toUpperCase().includes(keyword) ||
+          trip.vehicleNo.toUpperCase().includes(keyword) ||
+          trip.driver.toUpperCase().includes(keyword) ||
+          trip.orders.some(order => order.code.toUpperCase().includes(keyword));
+        if (!matchKeyword) return false;
+        if (filter === 'risk') return computed.alerts.length > 0;
+        if (filter === 'late') return computed.slaStatus === 'late';
+        if (filter === 'running') return trip.status.includes('Đang');
+        return true;
+      });
+
+      document.getElementById('tripCountBadge').textContent = `${filtered.length} chuyến`;
+      filtered.forEach(trip => {
+        const computed = getTripComputed(trip);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `trip-card ${trip.id === activeTripId ? 'active' : ''}`;
+        button.innerHTML = `
+          <div class="trip-main">
+            <div>
+              <strong>${trip.id}</strong>
+              <span>${trip.routeName}</span>
+            </div>
+            <span class="status-badge ${getSlaClass(computed.slaStatus)}">${getSlaLabel(computed.slaStatus)}</span>
+          </div>
+          <div class="d-flex justify-content-between gap-2">
+            <span class="muted">${trip.vehicleNo}</span>
+            <span class="muted">${Math.round(computed.remainingKm)} km còn lại</span>
+          </div>
+          <div class="d-flex justify-content-between gap-2 mt-2">
+            <span class="status-badge ${getGpsClass(computed.gps.state)}">GPS ${getGpsLabel(computed.gps)}</span>
+            <span class="muted">${computed.alerts.length} cảnh báo</span>
+          </div>
+        `;
+        button.addEventListener('click', () => {
+          activeTripId = trip.id;
+          renderAll();
+        });
+        list.appendChild(button);
+      });
+    }
+
+    function renderActiveTrip() {
+      const trip = getActiveTrip();
+      const computed = getTripComputed(trip);
+      renderMap(trip, computed);
+      renderTripDetails(trip, computed);
+      renderAlerts(computed.alerts);
+      renderTimeline(trip.events);
+      renderOrders(trip.orders);
+      renderPod(trip.pod, trip.podStatus);
+      renderGpsFeed(trip, computed);
+    }
+
+    function renderMap(trip, computed) {
+      layerGroup.clearLayers();
+      L.polyline(trip.plannedRoute, {
+        color: '#64748b',
+        weight: 4,
+        opacity: 0.65,
+        dashArray: '8 8'
+      }).addTo(layerGroup);
+      L.polyline(trip.actualRoute, {
+        color: '#0f8aa6',
+        weight: 5,
+        opacity: 0.88
+      }).addTo(layerGroup);
+
+      L.marker(trip.plannedRoute[0], {
+        icon: L.divIcon({ className: '', html: '<div class="route-marker"><i class="fas fa-warehouse"></i></div>', iconSize: [24, 24], iconAnchor: [12, 12] })
+      }).addTo(layerGroup).bindPopup(`Lấy hàng: ${trip.origin}`);
+      L.marker(computed.destination, {
+        icon: L.divIcon({ className: '', html: '<div class="route-marker destination"><i class="fas fa-flag-checkered"></i></div>', iconSize: [24, 24], iconAnchor: [12, 12] })
+      }).addTo(layerGroup).bindPopup(`Giao hàng: ${trip.destination}`);
+      L.marker(computed.current, {
+        icon: L.divIcon({ className: '', html: '<div class="vehicle-icon"><i class="fas fa-truck"></i></div>', iconSize: [34, 34], iconAnchor: [17, 17] })
+      }).addTo(layerGroup).bindPopup(`${trip.vehicleNo}<br>${trip.driver}<br>${trip.speedKmh} km/h`);
+
+      const bounds = L.latLngBounds([...trip.plannedRoute, ...trip.actualRoute]);
+      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 10 });
+    }
+
+    function renderTripDetails(trip, computed) {
+      document.getElementById('tripCode').textContent = trip.id;
+      document.getElementById('vehicleNo').textContent = `${trip.vehicleNo} - ${trip.phone}`;
+      document.getElementById('driverName').textContent = trip.driver;
+      document.getElementById('routeName').textContent = `${trip.origin} → ${trip.destination}`;
+      document.getElementById('orderSummary').textContent = `${trip.orders.length} đơn, ${trip.orders.reduce((sum, order) => sum + order.boxes, 0)} kiện`;
+      document.getElementById('slaTime').textContent = formatDateTime(trip.slaAt);
+      document.getElementById('tripStatusBadge').textContent = trip.status;
+      document.getElementById('speedValue').textContent = `${trip.speedKmh} km/h`;
+      document.getElementById('gpsHealthValue').textContent = getGpsLabel(computed.gps);
+      document.getElementById('etaValue').textContent = formatDateTime(computed.etaAt);
+      document.getElementById('remainingValue').textContent = `${computed.remainingKm.toFixed(1)} km`;
+      document.getElementById('deviationValue').textContent = `${trip.deviationKm.toFixed(1)} km`;
+
+      const slaBadge = document.getElementById('slaBadge');
+      slaBadge.textContent = getSlaLabel(computed.slaStatus);
+      slaBadge.className = `status-badge ${getSlaClass(computed.slaStatus)}`;
+    }
+
+    function renderAlerts(alerts) {
+      const list = document.getElementById('alertList');
+      list.innerHTML = '';
+      document.getElementById('alertCountBadge').textContent = alerts.length;
+      if (!alerts.length) {
+        list.innerHTML = '<div class="alert-item alert-info"><i class="fas fa-check-circle"></i><span>Không có cảnh báo mở</span></div>';
         return;
       }
-      document.getElementById('orderCode').textContent = data.code;
-      document.getElementById('customerName').textContent = data.customer;
-      document.getElementById('orderAddress').textContent = data.address;
-      document.getElementById('currentStatusBadge').textContent = data.status;
-
-      renderBoxes(data.boxes);
-      renderTimeline(data.timeline);
-      renderRoute(data.route, data.boxes);
+      alerts.forEach(alert => {
+        const item = document.createElement('div');
+        item.className = `alert-item alert-${alert.level}`;
+        item.innerHTML = `<i class="fas ${getAlertIcon(alert.level)}"></i><span>${alert.message}</span>`;
+        list.appendChild(item);
+      });
     }
 
-    function renderBoxes(boxes) {
-      const body = document.getElementById('boxTableBody');
+    function renderTimeline(events) {
+      const list = document.getElementById('timeline');
+      list.innerHTML = '';
+      document.getElementById('eventCountBadge').textContent = `${events.length} mốc`;
+      events.slice().reverse().forEach(event => {
+        const item = document.createElement('div');
+        item.className = 'timeline-item';
+        item.innerHTML = `
+          <div class="timeline-time">${formatDateTime(event.time)}</div>
+          <div>
+            <div class="timeline-title">${event.title}</div>
+            <div class="muted">${event.desc || ''}</div>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    function renderOrders(orders) {
+      const body = document.getElementById('ordersTableBody');
       body.innerHTML = '';
-      boxes.forEach(b => {
-        const tr = document.createElement('tr');
-        const statusClass = b.status.includes('giao') ? 'bg-warning text-dark' : 'bg-success';
-        tr.innerHTML = `
-          <td>${b.id}</td>
-          <td><span class="badge ${statusClass}">${b.status}</span></td>
-          <td>${b.time || ''}</td>
+      document.getElementById('ordersBadge').textContent = `${orders.length} đơn`;
+      orders.forEach(order => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><strong>${order.code}</strong></td>
+          <td>${order.customer}</td>
+          <td>${order.stop}</td>
+          <td>${order.boxes}</td>
+          <td><span class="status-badge status-info">${order.status}</span></td>
+          <td>${formatDateTime(order.slaAt)}</td>
         `;
-        body.appendChild(tr);
+        body.appendChild(row);
       });
     }
 
-    function renderTimeline(steps) {
-      const tl = document.getElementById('timeline');
-      tl.innerHTML = '';
-      steps.forEach(s => {
-        const div = document.createElement('div');
-        div.className = 'timeline-item';
-        div.innerHTML = `
-          <div class="fw-bold">${s.title}</div>
-          <small>${s.time} - ${s.desc || ''}</small>
+    function renderPod(items, status) {
+      const grid = document.getElementById('podGrid');
+      grid.innerHTML = '';
+      const badge = document.getElementById('podStatusBadge');
+      badge.textContent = status === 'completed' ? 'Hoàn tất' : 'Đang chờ';
+      badge.className = `status-badge ${status === 'completed' ? 'status-online' : 'status-stale'}`;
+      items.forEach(item => {
+        const box = document.createElement('div');
+        box.className = 'pod-box';
+        box.innerHTML = `
+          <div class="fw-bold"><i class="fas fa-file-circle-check"></i>${item.title}</div>
+          <div class="muted mt-1">${item.value}</div>
         `;
-        tl.appendChild(div);
+        grid.appendChild(box);
       });
     }
 
-    function renderRoute(routePoints, boxes) {
-      if (!routePoints || !routePoints.length) return;
-      if (routeLine) map.removeLayer(routeLine);
-      routeLine = L.polyline(routePoints, { color: '#4fb2ff', weight: 4, opacity: 0.8 }).addTo(map);
-      map.fitBounds(routeLine.getBounds(), { padding: [20, 20] });
+    function renderGpsFeed(trip, computed) {
+      const list = document.getElementById('gpsFeed');
+      list.innerHTML = '';
+      const current = computed.current;
+      [
+        ['Biển số', trip.vehicleNo],
+        ['Tọa độ', `${current[0].toFixed(4)}, ${current[1].toFixed(4)}`],
+        ['Cập nhật', formatDateTime(trip.gpsLastAt)],
+        ['Tổng tuyến', `${routeDistanceKm(trip.plannedRoute).toFixed(1)} km`]
+      ].forEach(([label, value]) => {
+        const row = document.createElement('div');
+        row.className = 'feed-row';
+        row.innerHTML = `<div class="muted">${label}</div><strong>${value}</strong>`;
+        list.appendChild(row);
+      });
+    }
 
-      Object.values(markers).forEach(m => map.removeLayer(m));
-      Object.keys(markers).forEach(k => delete markers[k]);
-
-      (boxes || []).forEach(b => {
-        if (b.lat && b.lng) {
-          markers[b.id] = L.marker([b.lat, b.lng]).addTo(map).bindPopup(`${b.id}: ${b.status}`);
+    function tickGps() {
+      if (!liveEnabled) return;
+      const trip = getActiveTrip();
+      if (trip.gpsIndex < trip.actualRouteFull.length - 1) {
+        trip.gpsIndex += 1;
+        trip.actualRoute = trip.actualRouteFull.slice(0, trip.gpsIndex + 1);
+        trip.gpsLastAt = now().toISOString();
+        trip.speedKmh = Math.max(18, Math.min(76, trip.speedKmh + Math.round(Math.random() * 10 - 4)));
+        if (trip.gpsIndex === trip.actualRouteFull.length - 1) {
+          trip.status = 'Đến điểm giao';
+          trip.events.push({ time: now().toISOString(), title: 'Xe đến điểm giao', desc: 'GPS vào vùng giao hàng' });
         }
-      });
+      } else {
+        trip.gpsLastAt = now().toISOString();
+      }
+      renderAll();
+    }
+
+    function getGpsLabel(gps) {
+      if (gps.state === 'online') return `${gps.ageMinutes} phút`;
+      if (gps.state === 'stale') return `chậm ${gps.ageMinutes} phút`;
+      return gps.ageMinutes === null ? 'mất tín hiệu' : `mất ${gps.ageMinutes} phút`;
+    }
+
+    function getGpsClass(state) {
+      if (state === 'online') return 'status-online';
+      if (state === 'stale') return 'status-stale';
+      return 'status-lost';
+    }
+
+    function getSlaLabel(status) {
+      if (status === 'on-time') return 'Đúng SLA';
+      if (status === 'at-risk') return 'Nguy cơ trễ';
+      if (status === 'late') return 'Trễ SLA';
+      return 'Chưa rõ';
+    }
+
+    function getSlaClass(status) {
+      if (status === 'on-time') return 'status-on-time';
+      if (status === 'at-risk') return 'status-at-risk';
+      if (status === 'late') return 'status-late';
+      return 'status-info';
+    }
+
+    function getAlertIcon(level) {
+      if (level === 'danger') return 'fa-circle-exclamation';
+      if (level === 'warning') return 'fa-triangle-exclamation';
+      return 'fa-circle-info';
     }
   </script>
 </body>

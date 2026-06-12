@@ -131,6 +131,13 @@
               <button type="button" class="btn btn-outline-light btn-sm" data-view-mode="side"><i class="fas fa-arrows-alt-h me-1"></i>Mặt bên</button>
               <button type="button" class="btn btn-outline-light btn-sm" data-view-mode="front"><i class="fas fa-arrows-alt-v me-1"></i>Mặt trước</button>
             </div>
+            <div class="camera-tools mb-3">
+              <span>Camera</span>
+              <button type="button" class="btn btn-outline-light btn-sm" data-camera-view="iso" title="Góc nhìn phối cảnh"><i class="fas fa-cube"></i></button>
+              <button type="button" class="btn btn-outline-light btn-sm" data-camera-view="top" title="Nhìn từ trên xuống"><i class="fas fa-arrow-down"></i></button>
+              <button type="button" class="btn btn-outline-light btn-sm" data-camera-view="side" title="Nhìn mặt bên"><i class="fas fa-arrows-alt-h"></i></button>
+              <button type="button" class="btn btn-outline-light btn-sm" data-camera-view="front" title="Nhìn mặt trước"><i class="fas fa-arrows-alt-v"></i></button>
+            </div>
             <div class="controls-stack mb-3">
               <div class="timeline-buttons">
                 <button type="button" id="stepPrevBtn" class="btn btn-outline-light btn-sm" title="Lùi một hộp"><i class="fas fa-step-backward"></i></button>
@@ -210,7 +217,7 @@
             <div class="mt-3 d-flex gap-3 flex-wrap">
               <span class="badge-soft"><i class="fas fa-lightbulb me-1"></i>Ánh sáng HDR giả lập</span>
               <span class="badge-soft"><i class="fas fa-arrows-alt me-1"></i>OrbitControls 360°</span>
-              <span class="badge-soft"><i class="fas fa-border-all me-1"></i>Viền container rõ ràng</span>
+              <span class="badge-soft"><i class="fas fa-border-all me-1"></i>Khung, gân và cửa container</span>
             </div>
           </div>
         </div>
@@ -311,7 +318,7 @@
               <i class="fas fa-table"></i>
               <div>
                 <div class="small text-muted">CSV/JSON/XLSX</div>
-                <small>Cột tối thiểu: width,height,length,quantity[,color,weight,stackable]</small>
+                <small>Cột tối thiểu: Dài, Rộng, Cao, Số lượng</small>
               </div>
               <button class="btn btn-outline-light btn-sm ms-auto" id="chooseBoxFileBtn">Chọn file</button>
             </div>
