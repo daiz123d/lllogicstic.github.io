@@ -4,6 +4,14 @@
 
 This repository contains a static web app served by nginx on port 8080.
 
+## GitHub Pages
+
+Public deployment:
+
+```text
+https://daiz123d.github.io/lllogicstic.github.io/
+```
+
 GitLab CI builds and pushes this image:
 
 ```text
