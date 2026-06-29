@@ -8,8 +8,6 @@ variables:
 
 build-image:
   stage: build
-  tags:
-    - k8s-runner
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
