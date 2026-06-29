@@ -21,7 +21,7 @@ spec:
         - name: harbor-pull-secret
       containers:
         - name: weeb
-          image: harbor.tinasoft.io/daita/tesst:latest
+          image: harbor.tinasoft.io/daiiiitaa/tesst:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
