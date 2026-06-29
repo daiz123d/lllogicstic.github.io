@@ -5,6 +5,8 @@ variables:
   HARBOR_REGISTRY: "harbor.tinasoft.io"
   HARBOR_PROJECT: "intern-devops"
   HARBOR_REPOSITORY: "tesst"
+  HARBOR_USER: "dai.ta"
+  HARBOR_PASSWORD: "Tinasoft@123"
 
 build-image:
   stage: build
