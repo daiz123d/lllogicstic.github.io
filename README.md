@@ -15,7 +15,7 @@ https://daiz123d.github.io/lllogicstic.github.io/
 GitLab CI builds and pushes this image:
 
 ```text
-harbor.tinasoft.io/intern-devops/tesst:latest
+harbor.tinasoft.io/daita/tesst:latest
 ```
 
 Required masked GitLab CI/CD variables:
@@ -29,7 +29,7 @@ The pipeline uses these Harbor image settings in `.gitlab-ci.yml`:
 
 ```text
 HARBOR_REGISTRY=harbor.tinasoft.io
-HARBOR_PROJECT=intern-devops
+HARBOR_PROJECT=daita
 HARBOR_REPOSITORY=tesst
 ```
 
