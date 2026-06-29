@@ -2,9 +2,9 @@ stages:
   - build
 
 variables:
-  REGISTRY_HOST: "https://index.docker.io/v1/"
-  IMAGE_NAME: "docker.io/daiz123d/tesst"
-  IMAGE_TAG: "latest"
+  HARBOR_REGISTRY: "harbor.tinasoft.io"
+  HARBOR_PROJECT: "intern-devops"
+  HARBOR_REPOSITORY: "tesst"
 
 build-image:
   stage: build
@@ -15,7 +15,19 @@ build-image:
     entrypoint: [""]
   script:
     - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$REGISTRY_HOST\":{\"username\":\"$DOCKER_USER\",\"password\":\"$DOCKER_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor --context "$CI_PROJECT_DIR" --dockerfile "$CI_PROJECT_DIR/Dockerfile" --destination "$IMAGE_NAME:$IMAGE_TAG"
-  only:
-    - main
+    - |
+      if [ -z "$HARBOR_USER" ] || [ -z "$HARBOR_PASSWORD" ]; then
+        echo "Missing HARBOR_USER or HARBOR_PASSWORD"
+        exit 1
+      fi
+    - export IMAGE_NAME="$HARBOR_REGISTRY/$HARBOR_PROJECT/$HARBOR_REPOSITORY"
+    - echo "Pushing image to $IMAGE_NAME"
+    - printf '{"auths":{"%s":{"username":"%s","password":"%s"}}}' "$HARBOR_REGISTRY" "$HARBOR_USER" "$HARBOR_PASSWORD" > /kaniko/.docker/config.json
+    - |
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR" \
+        --dockerfile "$CI_PROJECT_DIR/Dockerfile" \
+        --destination "$IMAGE_NAME:latest" \
+        --destination "$IMAGE_NAME:$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
