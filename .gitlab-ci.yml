@@ -3,7 +3,7 @@ stages:
 
 variables:
   HARBOR_REGISTRY: "harbor.tinasoft.io"
-  HARBOR_PROJECT: "daita"
+  HARBOR_PROJECT: "daiiiitaa"
   HARBOR_REPOSITORY: "tesst"
   HARBOR_USER: "dai.ta"
   HARBOR_PASSWORD: "Tinasoft@123"
