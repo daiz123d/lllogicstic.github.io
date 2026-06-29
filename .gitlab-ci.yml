@@ -30,4 +30,4 @@ build-image:
         --destination "$IMAGE_NAME:latest" \
         --destination "$IMAGE_NAME:$CI_COMMIT_SHORT_SHA"
   rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH'
