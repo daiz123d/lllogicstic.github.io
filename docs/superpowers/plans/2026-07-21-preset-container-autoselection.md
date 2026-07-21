@@ -1,171 +1,147 @@
 # Preset Container Autoselection Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let optimisation automatically choose standard sample containers until all cartons are packed or no sample can make progress.
+**Goal:** Let the optimisation action choose the best standard sample container repeatedly until all cartons are packed or no preset can make progress.
 
-**Architecture:** Add a typed adapter around the legacy `selectBestPresetContainers` heuristic. `PackingWorkspace` chooses that adapter by default and keeps the current manual-container path as an alternative. The Inspector exposes the mode and a read-only catalog; all consumers retain the existing `PackingResult` shape.
+**Architecture:** Keep `src/binPacking.js` as the packing authority and add a typed Next.js adapter that converts its preset results into the existing `PackingResult` shape. Add an automatic/manual container mode to the workspace and show the standard catalog in the inspector while automatic mode is active; manual containers remain available as an explicit mode.
 
-**Tech Stack:** Next.js 16, React 19, TypeScript, Vitest, existing `src/binPacking.js` engine.
+**Tech Stack:** Next.js 16 static export, React 19, TypeScript, existing JavaScript packing engine, Vitest and Testing Library.
 
 ## Global Constraints
 
-- Keep Three.js `0.183.2` and the current React Three Fiber renderer.
-- Do not alter `src/binPacking.js` packing heuristics or backend contracts.
-- Evaluate all existing `containerPresets`; no manual preselection is required.
-- Preserve manual-container mode, carton import/export, and existing result/3D selection behavior.
+- Reuse the existing `containerPresets` and `selectBestPresetContainers` logic from `src/binPacking.js`.
+- Do not change carton import/export formats, backend contracts, or packing heuristics.
+- Keep Three.js `0.183.2` and the current R3F renderer unchanged.
+- Preserve the existing manual-container mode and current result/3D viewer contracts.
+- Do not stage unrelated user files: `__pycache__/`, `openrouter_chat.py`, `tests/shopLogic.test.mjs`, `tests/test_openrouter.py`.
 
 ---
 
-### Task 1: Typed preset-selection adapter
+### Task 1: Add a typed preset-selection adapter
 
 **Files:**
-- Modify: `lib/packing/engine.ts`
-- Test: `tests/packing/preset-selection.test.ts`
+- Create: `lib/packing/presets.ts`
+- Modify: `lib/packing/types.ts`
+- Test: `tests/packing/presets.test.ts`
 
-**Consumes:** `CartonInput`, `PackingOptions`, `PackingResult`, `containerPresets`, and legacy `selectBestPresetContainers`.
+**Interfaces:**
+- Consumes `CartonInput[]` and optional `allowRotation`/`strategy` options.
+- Produces `PackingResult` with stable `preset-<index>` container IDs, container names, packed placements, and leftovers.
 
-**Produces:** `sampleContainers` and `packWithPresetContainers(cartons, options): PackingResult`.
-
-- [ ] **Step 1: Write the failing adapter tests**
+- [ ] **Step 1: Write the failing tests** for a single preset fit and a multi-preset remainder.
 
 ```ts
-it('selects a standard container with a stable id', () => {
-  const result = packWithPresetContainers([sampleCarton], { allowRotation: false });
-  expect(result.results[0].container).toMatchObject({ id: 'preset-1', name: '2.5T (VN)' });
-  expect(result.leftover).toEqual([]);
+it('selects the smallest preset that fits all cartons', () => {
+  const result = packPresetContainers([{ id: 'box', label: 'Box', length: 1, width: 1, height: 1, quantity: 2, weight: 1, color: '#22d3ee', stackable: true }]);
+  expect(result.results).toHaveLength(1);
+  expect(result.results[0].container.name).toBe('1.25T (VN)');
+  expect(result.leftover).toHaveLength(0);
 });
 
-it('adds another preset when cartons remain', () => {
-  const result = packWithPresetContainers([longCartons], { allowRotation: false });
-  expect(result.results).toHaveLength(2);
-  expect(result.leftover).toEqual([]);
+it('adds another preset until all cartons are packed', () => {
+  const result = packPresetContainers([{ id: 'oversize', label: 'Oversize', length: 4, width: 2, height: 2, quantity: 2, weight: 10, color: '#22d3ee', stackable: true }]);
+  expect(result.results.length).toBeGreaterThan(1);
+  expect(result.results.reduce((sum, item) => sum + item.packed.length, 0)).toBe(2);
+  expect(result.leftover).toHaveLength(0);
 });
 ```
 
-- [ ] **Step 2: Run the adapter test to verify it fails**
+- [ ] **Step 2: Run the focused test and verify it fails** because `packPresetContainers` does not exist.
 
-Run: `npm run test:unit -- tests/packing/preset-selection.test.ts`
-
-Expected: FAIL because `packWithPresetContainers` is not exported.
-
-- [ ] **Step 3: Implement the typed adapter**
-
-```ts
-export const sampleContainers = containerPresets.map((preset) => ({ ...preset, quantity: 1 }));
-
-export function packWithPresetContainers(cartons: CartonInput[], options: PackingOptions = {}): PackingResult {
-  const legacy = legacySelectBestPresetContainers(cartons, options);
-  return {
-    results: legacy.results.map((item, index) => ({
-      container: { ...item.container, id: `preset-${index + 1}` },
-      packed: item.packed,
-      unpacked: item.unpacked,
-    })),
-    leftover: legacy.leftover,
-  } as PackingResult;
-}
+```powershell
+npm run test:unit -- tests/packing/presets.test.ts
 ```
 
-- [ ] **Step 4: Run the adapter test to verify it passes**
+- [ ] **Step 3: Implement the adapter** by calling `selectBestPresetContainers`, adding stable IDs, normalising placement IDs/labels where legacy results omit them, and mapping the final remaining boxes to the existing `Leftover[]` type.
 
-Run: `npm run test:unit -- tests/packing/preset-selection.test.ts`
+- [ ] **Step 4: Run the focused test and the legacy preset tests**.
 
-Expected: PASS with two tests.
+```powershell
+npm run test:unit -- tests/packing/presets.test.ts
+npm run test:legacy -- --test-name-pattern="preset"
+```
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit** the adapter and tests.
 
-Run: `git add lib/packing/engine.ts tests/packing/preset-selection.test.ts; git commit -m "feat: expose preset container selection"`
+```powershell
+git add lib/packing/types.ts lib/packing/presets.ts tests/packing/presets.test.ts
+git commit -m "feat: expose standard preset container selection"
+```
 
-### Task 2: Automatic sample-mode controls
+### Task 2: Add automatic/manual mode to the packing workspace
 
 **Files:**
 - Modify: `components/packing/inspector.tsx`
 - Modify: `components/packing/packing-workspace.tsx`
-- Modify: `app/globals.css`
-- Test: `tests/packing/inspector.test.tsx`
+- Modify: `lib/packing/engine.ts`
 - Test: `tests/packing/workspace.test.tsx`
 
-**Consumes:** `sampleContainers`, `packWithPresetContainers`, `ContainerInput`, and existing Inspector callbacks.
+**Interfaces:**
+- `containerMode` is `'preset' | 'manual'`, defaulting to `'preset'`.
+- Automatic mode calls `packPresetContainers(cartons, { allowRotation, strategy })`.
+- Manual mode continues calling `packMultipleContainers(containers, cartons, options)`.
 
-**Produces:** `containerMode: 'presets' | 'manual'`, defaulting to `'presets'`.
+- [ ] **Step 1: Extend the workspace test** to click the strategy tab, select “Tự chọn container mẫu”, run optimisation, and assert the result names a standard preset.
 
-- [ ] **Step 1: Write failing mode tests**
+- [ ] **Step 2: Run the workspace test and verify it fails** because the mode control and preset path are not connected.
 
-```tsx
-fireEvent.click(screen.getByRole('tab', { name: /container/i }));
-expect(screen.getByRole('radio', { name: /tự chọn container mẫu/i })).toBeChecked();
-expect(screen.getByText('1.25T (VN)')).toBeVisible();
+```powershell
+npm run test:unit -- tests/packing/workspace.test.tsx
 ```
 
-```tsx
-render(<PackingWorkspace />);
-fireEvent.click(screen.getByRole('button', { name: /tối ưu xếp hàng/i }));
-expect(screen.getAllByText(/2.5T \(VN\)/i)[0]).toBeVisible();
+- [ ] **Step 3: Add the mode state and callback** to `PackingWorkspace`, route `runPacking` to the preset adapter when mode is `'preset'`, clear stale results when mode or strategy changes, and keep the existing manual path unchanged.
+
+- [ ] **Step 4: Add the mode selector** to the Strategy inspector with clear labels: “Tự chọn container mẫu” and “Dùng container tự nhập”.
+
+- [ ] **Step 5: Run the focused workspace and inspector tests** and confirm the automatic result renders a preset container.
+
+```powershell
+npm run test:unit -- tests/packing/workspace.test.tsx tests/packing/inspector.test.tsx
 ```
 
-- [ ] **Step 2: Run focused tests to verify they fail**
+- [ ] **Step 6: Commit** the mode integration.
 
-Run: `npm run test:unit -- tests/packing/inspector.test.tsx tests/packing/workspace.test.tsx`
-
-Expected: FAIL because the auto-sample radio and selected sample output do not exist.
-
-- [ ] **Step 3: Add selection mode and catalog**
-
-```ts
-type ContainerMode = 'presets' | 'manual';
-const [containerMode, setContainerMode] = useState<ContainerMode>('presets');
-const nextResult = containerMode === 'presets'
-  ? packWithPresetContainers(cartons, { allowRotation, strategy })
-  : packMultipleContainers(containers, cartons, { allowRotation, strategy });
+```powershell
+git add components/packing/inspector.tsx components/packing/packing-workspace.tsx lib/packing/engine.ts tests/packing/workspace.test.tsx
+git commit -m "feat: optimize with standard container presets"
 ```
 
-Render the catalog read-only in automatic mode; render editable container records only in manual mode. Changing mode clears the stale result and resets playback.
-
-- [ ] **Step 4: Run focused tests to verify they pass**
-
-Run: `npm run test:unit -- tests/packing/inspector.test.tsx tests/packing/workspace.test.tsx`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-Run: `git add components/packing/inspector.tsx components/packing/packing-workspace.tsx app/globals.css tests/packing/inspector.test.tsx tests/packing/workspace.test.tsx; git commit -m "feat: optimize with sample containers by default"`
-
-### Task 3: Result explanation and verification
+### Task 3: Show the sample catalog and verify the complete flow
 
 **Files:**
-- Modify: `components/packing/packing-workspace.tsx`
-- Modify: `tests/packing/workspace.test.tsx`
+- Modify: `components/packing/inspector.tsx`
+- Modify: `app/globals.css`
+- Test: `tests/packing/inspector.test.tsx`
 
-**Consumes:** `PackingResult.results` whose container names are sample presets.
+**Interfaces:**
+- The catalog is read-only in preset mode and uses the existing `containerPresets` data.
+- The result panel and `PackingViewer` consume the same `PackingResult` regardless of mode.
 
-**Produces:** A visible explanation that lists the chosen samples and preserves unplaced-carton warnings.
+- [ ] **Step 1: Write a failing inspector test** asserting the preset catalog shows names and dimensions while automatic mode is selected.
 
-- [ ] **Step 1: Write a failing workspace assertion**
+- [ ] **Step 2: Run the test and verify it fails** because the catalog is not rendered.
 
-```tsx
-expect(screen.getByText(/đã tự chọn container mẫu/i)).toBeVisible();
+```powershell
+npm run test:unit -- tests/packing/inspector.test.tsx
 ```
 
-- [ ] **Step 2: Run the workspace test to verify it fails**
+- [ ] **Step 3: Render the compact read-only catalog** in the Container tab for preset mode and keep editable cards for manual mode.
 
-Run: `npm run test:unit -- tests/packing/workspace.test.tsx`
+- [ ] **Step 4: Add only the required table styles** for the catalog, including narrow-screen horizontal scrolling and accessible focus states.
 
-Expected: FAIL because the result header has no automatic-selection explanation.
+- [ ] **Step 5: Run the full verification suite and static build**.
 
-- [ ] **Step 3: Add result wording**
-
-```tsx
-{containerMode === 'presets' && <p className="result-source">Đã tự chọn container mẫu theo lượng hàng còn lại.</p>}
+```powershell
+npm test
+npm run build
+git diff --check
 ```
 
-- [ ] **Step 4: Run all validation**
+- [ ] **Step 6: Commit and push the verified branch**.
 
-Run: `npm test; npm run build`
-
-Expected: all Vitest and legacy tests pass; Next static export succeeds.
-
-- [ ] **Step 5: Commit and deploy**
-
-Run: `git add components/packing/packing-workspace.tsx tests/packing/workspace.test.tsx; git commit -m "feat: explain automatic sample recommendations"; git push github HEAD:deploy-github`
+```powershell
+git add components/packing/inspector.tsx app/globals.css tests/packing/inspector.test.tsx
+git commit -m "feat: display standard container catalog"
+git push github HEAD:deploy-github
+```
