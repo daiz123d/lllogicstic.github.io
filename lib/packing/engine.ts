@@ -1,9 +1,9 @@
 import {
   containerPresets,
   packMultipleContainers as legacyPackMultipleContainers,
-  selectBestPresetContainers as legacySelectBestPresetContainers,
 } from '@/src/binPacking.js';
 
+import { packPresetContainers } from './presets';
 import type { CartonInput, ContainerInput, PackingOptions, PackingResult } from './types';
 
 export const sampleContainers: Omit<ContainerInput, 'id'>[] = containerPresets.map((preset) => ({
@@ -30,21 +30,5 @@ export function packMultipleContainers(
 }
 
 export function packWithPresetContainers(cartons: CartonInput[], options: PackingOptions = {}): PackingResult {
-  const selected = legacySelectBestPresetContainers(cartons, options);
-
-  return {
-    results: selected.results.map((item, index) => ({
-      container: {
-        id: `preset-${index + 1}`,
-        name: item.container.name,
-        width: item.container.width,
-        height: item.container.height,
-        length: item.container.length,
-        maxWeight: item.container.maxWeight,
-      },
-      packed: item.packed,
-      unpacked: item.unpacked,
-    })),
-    leftover: selected.leftover,
-  } as PackingResult;
+  return packPresetContainers(cartons, options);
 }

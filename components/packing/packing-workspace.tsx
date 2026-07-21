@@ -7,10 +7,10 @@ import { CommandBar } from '@/components/control-center/command-bar';
 import { ControlCenterShell } from '@/components/control-center/control-center-shell';
 import type { KpiMetric } from '@/components/control-center/kpi-strip';
 import { parseContainerRows } from '@/lib/packing/container-import';
-import { packMultipleContainers } from '@/lib/packing/engine';
+import { packMultipleContainers, packWithPresetContainers, sampleContainers } from '@/lib/packing/engine';
 import { downloadPackingWorkbook, readRowsFromFile } from '@/lib/packing/file-io';
 import { parseCartonRows } from '@/lib/packing/import';
-import type { CartonInput, ContainerInput, PackingResult, PackingStrategy } from '@/lib/packing/types';
+import type { CartonInput, ContainerInput, ContainerSelectionMode, PackingResult, PackingStrategy } from '@/lib/packing/types';
 import { Inspector } from './inspector';
 import { PackingResultTable } from './packing-result-table';
 import { PackingViewer, placementKey } from './packing-viewer';
@@ -46,6 +46,7 @@ type ImportTarget = 'cartons' | 'containers';
 export function PackingWorkspace() {
   const [containers, setContainers] = useState(defaultContainers);
   const [cartons, setCartons] = useState(defaultCartons);
+  const [containerMode, setContainerMode] = useState<ContainerSelectionMode>('presets');
   const [allowRotation, setAllowRotation] = useState(true);
   const [strategy, setStrategy] = useState<PackingStrategy>('minContainers');
   const [result, setResult] = useState<PackingResult | null>(null);
@@ -55,18 +56,18 @@ export function PackingWorkspace() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importTarget, setImportTarget] = useState<ImportTarget>('cartons');
 
-  const invalid = !containers.every(isValidContainer) || !cartons.every(isValidCarton);
+  const invalid = !cartons.every(isValidCarton) || (containerMode === 'manual' && !containers.every(isValidContainer));
   const packedCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
   const totalCount = useMemo(() => cartons.reduce((sum, carton) => sum + carton.quantity, 0), [cartons]);
   const usedContainerCount = useMemo(() => result?.results.filter((item) => item.packed.length > 0).length ?? 0, [result]);
   const placementCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
   const selectedPlacement = useMemo(() => result?.results.flatMap((item) => item.packed.map((placement) => ({ placement, containerId: item.container.id }))).find(({ placement, containerId }) => placementKey(containerId, placement) === selectedPlacementId)?.placement ?? null, [result, selectedPlacementId]);
   const kpis = useMemo<KpiMetric[]>(() => [
-    { id: 'containers', label: 'Container khả dụng', value: containers.reduce((sum, item) => sum + item.quantity, 0), status: 'Đội container sẵn sàng', progress: 100, tone: 'cyan' },
+    { id: 'containers', label: 'Container khả dụng', value: containerMode === 'presets' ? sampleContainers.length : containers.reduce((sum, item) => sum + item.quantity, 0), status: containerMode === 'presets' ? 'Thư viện container mẫu' : 'Đội container sẵn sàng', progress: 100, tone: 'cyan' },
     { id: 'cartons', label: 'Tổng số hộp', value: totalCount, status: 'Dữ liệu đầu vào', progress: totalCount ? 100 : 0, tone: 'teal' },
     { id: 'packed', label: 'Đã xếp', value: packedCount, status: result ? `${totalCount ? Math.round((packedCount / totalCount) * 100) : 0}% hoàn tất` : 'Chưa tối ưu', progress: totalCount ? (packedCount / totalCount) * 100 : 0, tone: 'teal' },
     { id: 'leftover', label: 'Chưa xếp', value: result?.leftover.length ?? 0, status: result?.leftover.length ? 'Cần xử lý' : 'Không có cảnh báo', progress: result?.leftover.length ? 100 : 0, tone: result?.leftover.length ? 'coral' : 'amber' },
-  ], [containers, packedCount, placementCount, result, totalCount]);
+  ], [containerMode, containers, packedCount, placementCount, result, totalCount]);
 
   function updateContainer(containerId: string, field: keyof ContainerInput, value: string) {
     setContainers((items) => items.map((container) => container.id === containerId
@@ -101,17 +102,41 @@ export function PackingWorkspace() {
       setMessage('Kiểm tra lại kích thước, số lượng và tải trọng. Các giá trị phải hợp lệ.');
       return;
     }
-    const nextResult = packMultipleContainers(containers, cartons, { allowRotation, strategy });
+    const nextResult = containerMode === 'presets'
+      ? packWithPresetContainers(cartons, { allowRotation, strategy })
+      : packMultipleContainers(containers, cartons, { allowRotation, strategy });
     setResult(nextResult);
     setStep(nextResult.results.reduce((sum, item) => sum + item.packed.length, 0));
     setSelectedPlacementId(null);
     const nextPacked = nextResult.results.reduce((sum, item) => sum + item.packed.length, 0);
-    setMessage(`Đã xếp ${nextPacked} kiện${nextResult.leftover.length ? `, còn ${nextResult.leftover.length} kiện chưa xếp` : ', không còn kiện dư'}.`);
+    const selectedNames = nextResult.results.map((item) => item.container.name).join(', ');
+    setMessage(`${containerMode === 'presets' ? 'Đã tự chọn' : 'Đã dùng'} ${selectedNames || 'chưa có container'} để xếp ${nextPacked} kiện${nextResult.leftover.length ? `, còn ${nextResult.leftover.length} kiện chưa xếp` : ', không còn kiện dư'}.`);
+  }
+
+  function updateContainerMode(mode: ContainerSelectionMode) {
+    setContainerMode(mode);
+    setResult(null);
+    setStep(0);
+    setSelectedPlacementId(null);
+    setMessage(mode === 'presets' ? 'Sẵn sàng tự chọn container mẫu theo lượng hàng.' : 'Sẵn sàng dùng container tự nhập.');
+  }
+
+  function updateStrategy(nextStrategy: PackingStrategy) {
+    setStrategy(nextStrategy);
+    setResult(null);
+    setStep(0);
+  }
+
+  function updateAllowRotation(value: boolean) {
+    setAllowRotation(value);
+    setResult(null);
+    setStep(0);
   }
 
   function resetWorkspace() {
     setContainers(defaultContainers);
     setCartons(defaultCartons);
+    setContainerMode('presets');
     setAllowRotation(true);
     setStrategy('minContainers');
     setResult(null);
@@ -178,7 +203,7 @@ export function PackingWorkspace() {
           <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} step={step} />
           {result && placementCount > 0 && <section className="playback-panel" aria-label="Trình tự xếp hàng"><div><p className="section-kicker">PLAYBACK</p><strong>Kiện {Math.min(step, placementCount)} / {placementCount}</strong></div><div className="playback-controls"><button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))}>← Trước</button><input aria-label="Tiến trình xếp hàng" type="range" min="0" max={placementCount} value={step} onChange={(event) => setStep(numberValue(event.target.value))} /><button type="button" onClick={() => setStep((value) => Math.min(placementCount, value + 1))}>Tiếp →</button></div>{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</section>}
         </section>
-        <Inspector containers={containers} cartons={cartons} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={setStrategy} onAllowRotationChange={setAllowRotation} onImportClick={chooseImport} />
+        <Inspector containers={containers} cartons={cartons} containerMode={containerMode} sampleContainers={sampleContainers} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onContainerModeChange={updateContainerMode} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={updateStrategy} onAllowRotationChange={updateAllowRotation} onImportClick={chooseImport} />
       </div>
       <section className="result-panel command-result-panel">
         <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${totalCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>

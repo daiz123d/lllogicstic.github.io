@@ -1,4 +1,5 @@
 export type PackingStrategy = 'minContainers' | 'maxFill' | 'inputOrder' | 'heavyBottom';
+export type ContainerSelectionMode = 'presets' | 'manual';
 export type LeftoverReason = 'oversize' | 'overweight' | 'no-space';
 
 export type ContainerInput = {
