@@ -7,6 +7,6 @@ describe('Home', () => {
   it('renders the container packing workspace', () => {
     render(<Home />);
 
-    expect(screen.getByRole('heading', { name: /xếp thùng/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /bảng điều phối xếp hàng 3d/i })).toBeInTheDocument();
   });
 });
