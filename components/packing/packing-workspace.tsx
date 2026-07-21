@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 
 import { packMultipleContainers } from '@/lib/packing/engine';
 import type { CartonInput, ContainerInput, PackingResult, PackingStrategy } from '@/lib/packing/types';
+import { PackingViewer, placementKey } from './packing-viewer';
 
 const defaultContainers: ContainerInput[] = [{
   id: 'container-1', name: 'Container 1', length: 4, width: 5, height: 3, quantity: 1, maxWeight: 1000,
@@ -38,17 +39,22 @@ export function PackingWorkspace() {
   const [strategy, setStrategy] = useState<PackingStrategy>('minContainers');
   const [result, setResult] = useState<PackingResult | null>(null);
   const [message, setMessage] = useState('Sẵn sàng tạo phương án xếp hàng.');
+  const [step, setStep] = useState(0);
+  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
 
   const invalid = !containers.every(isValidContainer) || !cartons.every(isValidCarton);
   const packedCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
   const totalCount = useMemo(() => cartons.reduce((sum, carton) => sum + carton.quantity, 0), [cartons]);
   const usedContainerCount = useMemo(() => result?.results.filter((item) => item.packed.length > 0).length ?? 0, [result]);
+  const placementCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
+  const selectedPlacement = useMemo(() => result?.results.flatMap((item) => item.packed.map((placement) => ({ placement, containerId: item.container.id }))).find(({ placement, containerId }) => placementKey(containerId, placement) === selectedPlacementId)?.placement ?? null, [result, selectedPlacementId]);
 
   function updateContainer(containerId: string, field: keyof ContainerInput, value: string) {
     setContainers((items) => items.map((container) => container.id === containerId
       ? { ...container, [field]: field === 'name' ? value : numberValue(value) }
       : container));
     setResult(null);
+    setStep(0);
   }
 
   function updateCarton(cartonId: string, field: keyof CartonInput, value: string | boolean) {
@@ -56,16 +62,19 @@ export function PackingWorkspace() {
       ? { ...carton, [field]: typeof value === 'boolean' ? value : ['label', 'color'].includes(field) ? value : numberValue(value) }
       : carton));
     setResult(null);
+    setStep(0);
   }
 
   function addContainer() {
     setContainers((items) => [...items, { ...defaultContainers[0], id: id('container'), name: `Container ${items.length + 1}` }]);
     setResult(null);
+    setStep(0);
   }
 
   function addCarton() {
     setCartons((items) => [...items, { ...defaultCartons[0], id: id('carton'), label: `Hộp ${items.length + 1}`, color: '#a78bfa' }]);
     setResult(null);
+    setStep(0);
   }
 
   function runPacking() {
@@ -75,6 +84,8 @@ export function PackingWorkspace() {
     }
     const nextResult = packMultipleContainers(containers, cartons, { allowRotation, strategy });
     setResult(nextResult);
+    setStep(nextResult.results.reduce((sum, item) => sum + item.packed.length, 0));
+    setSelectedPlacementId(null);
     const nextPacked = nextResult.results.reduce((sum, item) => sum + item.packed.length, 0);
     setMessage(`Đã xếp ${nextPacked} kiện${nextResult.leftover.length ? `, còn ${nextResult.leftover.length} kiện chưa xếp` : ', không còn kiện dư'}.`);
   }
@@ -146,6 +157,12 @@ export function PackingWorkspace() {
           <div className="metric-grid">
             <article><span>Tổng kiện</span><strong>{totalCount}</strong></article><article><span>Đã xếp</span><strong>{packedCount}</strong></article><article><span>Container dùng</span><strong>{usedContainerCount}</strong></article><article><span>Kiện dư</span><strong>{result?.leftover.length ?? 0}</strong></article>
           </div>
+          <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} step={step} />
+          {result && placementCount > 0 && <section className="playback-panel" aria-label="Trình tự xếp hàng">
+            <div><p className="section-kicker">TRÌNH TỰ XẾP</p><strong>Kiện {Math.min(step, placementCount)} / {placementCount}</strong></div>
+            <div className="playback-controls"><button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))}>← Trước</button><input aria-label="Tiến trình xếp hàng" type="range" min="0" max={placementCount} value={step} onChange={(event) => setStep(numberValue(event.target.value))} /><button type="button" onClick={() => setStep((value) => Math.min(placementCount, value + 1))}>Tiếp →</button></div>
+            {selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}
+          </section>}
           <section className="panel result-panel">
             <div className="panel-heading"><div><p className="section-kicker">PHƯƠNG ÁN</p><h2>Kết quả xếp hàng</h2></div></div>
             {!result && <div className="empty-state">Nhấn “Xếp thùng” để tạo phương án và mở không gian 3D.</div>}
