@@ -1,6 +1,15 @@
-import { packMultipleContainers as legacyPackMultipleContainers } from '@/src/binPacking.js';
+import {
+  containerPresets,
+  packMultipleContainers as legacyPackMultipleContainers,
+  selectBestPresetContainers as legacySelectBestPresetContainers,
+} from '@/src/binPacking.js';
 
 import type { CartonInput, ContainerInput, PackingOptions, PackingResult } from './types';
+
+export const sampleContainers: Omit<ContainerInput, 'id'>[] = containerPresets.map((preset) => ({
+  ...preset,
+  quantity: 1,
+}));
 
 function expandContainers(containers: ContainerInput[]) {
   return containers.flatMap(({ quantity, ...container }) =>
@@ -18,4 +27,24 @@ export function packMultipleContainers(
   options: PackingOptions = {},
 ): PackingResult {
   return legacyPackMultipleContainers(expandContainers(containers), cartons, options) as PackingResult;
+}
+
+export function packWithPresetContainers(cartons: CartonInput[], options: PackingOptions = {}): PackingResult {
+  const selected = legacySelectBestPresetContainers(cartons, options);
+
+  return {
+    results: selected.results.map((item, index) => ({
+      container: {
+        id: `preset-${index + 1}`,
+        name: item.container.name,
+        width: item.container.width,
+        height: item.container.height,
+        length: item.container.length,
+        maxWeight: item.container.maxWeight,
+      },
+      packed: item.packed,
+      unpacked: item.unpacked,
+    })),
+    leftover: selected.leftover,
+  } as PackingResult;
 }
