@@ -1,0 +1,16 @@
+:root {
+  color-scheme: dark;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #07101f;
+  color: #edf5ff;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, input, select { font: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #55d9ff; outline-offset: 2px; }
+.app-shell { min-height: 100vh; padding: 48px 24px; background: radial-gradient(circle at 10% 0%, #12345e 0, #07101f 42rem); }
+.welcome-card { width: min(100%, 840px); margin: 0 auto; padding: 48px; border: 1px solid #2b4667; border-radius: 24px; background: rgba(11, 27, 48, .88); box-shadow: 0 30px 80px rgba(0, 0, 0, .24); }
+.welcome-card h1 { margin: 0; font-size: clamp(2.5rem, 8vw, 5rem); }
+.welcome-card p { max-width: 620px; color: #b6c8dd; font-size: 1.1rem; line-height: 1.6; }
+.eyebrow { color: #55d9ff !important; font-size: .75rem !important; font-weight: 700; letter-spacing: .16em; }
