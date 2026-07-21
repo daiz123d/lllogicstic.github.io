@@ -1,9 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
+import { CommandBar } from '@/components/control-center/command-bar';
+import { ControlCenterShell } from '@/components/control-center/control-center-shell';
+import type { KpiMetric } from '@/components/control-center/kpi-strip';
 import { packMultipleContainers } from '@/lib/packing/engine';
 import type { CartonInput, ContainerInput, PackingResult, PackingStrategy } from '@/lib/packing/types';
+import { Inspector } from './inspector';
 import { PackingViewer, placementKey } from './packing-viewer';
 
 const defaultContainers: ContainerInput[] = [{
@@ -41,6 +45,7 @@ export function PackingWorkspace() {
   const [message, setMessage] = useState('Sẵn sàng tạo phương án xếp hàng.');
   const [step, setStep] = useState(0);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const invalid = !containers.every(isValidContainer) || !cartons.every(isValidCarton);
   const packedCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
@@ -48,6 +53,12 @@ export function PackingWorkspace() {
   const usedContainerCount = useMemo(() => result?.results.filter((item) => item.packed.length > 0).length ?? 0, [result]);
   const placementCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
   const selectedPlacement = useMemo(() => result?.results.flatMap((item) => item.packed.map((placement) => ({ placement, containerId: item.container.id }))).find(({ placement, containerId }) => placementKey(containerId, placement) === selectedPlacementId)?.placement ?? null, [result, selectedPlacementId]);
+  const kpis = useMemo<KpiMetric[]>(() => [
+    { id: 'containers', label: 'Container khả dụng', value: containers.reduce((sum, item) => sum + item.quantity, 0), status: 'Đội container sẵn sàng', progress: 100, tone: 'cyan' },
+    { id: 'cartons', label: 'Tổng số hộp', value: totalCount, status: 'Dữ liệu đầu vào', progress: totalCount ? 100 : 0, tone: 'teal' },
+    { id: 'packed', label: 'Đã xếp', value: packedCount, status: result ? `${placementCount ? Math.round((packedCount / placementCount) * 100) : 0}% hoàn tất` : 'Chưa tối ưu', progress: placementCount ? (packedCount / placementCount) * 100 : 0, tone: 'teal' },
+    { id: 'leftover', label: 'Chưa xếp', value: result?.leftover.length ?? 0, status: result?.leftover.length ? 'Cần xử lý' : 'Không có cảnh báo', progress: result?.leftover.length ? 100 : 0, tone: result?.leftover.length ? 'coral' : 'amber' },
+  ], [containers, packedCount, placementCount, result, totalCount]);
 
   function updateContainer(containerId: string, field: keyof ContainerInput, value: string) {
     setContainers((items) => items.map((container) => container.id === containerId
@@ -90,89 +101,49 @@ export function PackingWorkspace() {
     setMessage(`Đã xếp ${nextPacked} kiện${nextResult.leftover.length ? `, còn ${nextResult.leftover.length} kiện chưa xếp` : ', không còn kiện dư'}.`);
   }
 
-  return (
+  function resetWorkspace() {
+    setContainers(defaultContainers);
+    setCartons(defaultCartons);
+    setAllowRotation(true);
+    setStrategy('minContainers');
+    setResult(null);
+    setStep(0);
+    setSelectedPlacementId(null);
+    setMessage('Đã đặt lại dữ liệu điều phối về trạng thái ban đầu.');
+  }
+
+  function removeCarton(cartonId: string) {
+    setCartons((items) => items.length > 1 ? items.filter((item) => item.id !== cartonId) : items);
+    setResult(null);
+    setStep(0);
+  }
+
+  function removeContainer(containerId: string) {
+    setContainers((items) => items.length > 1 ? items.filter((item) => item.id !== containerId) : items);
+    setResult(null);
+    setStep(0);
+  }
+
+  return <ControlCenterShell
+    kpis={kpis}
+    commandBar={<CommandBar title="Bảng điều phối xếp hàng 3D" breadcrumb="Điều hành / Digital Twin / Xếp hàng" isSaved={!result} onImport={() => importInputRef.current?.click()} onReset={resetWorkspace} onOptimize={runPacking} optimizeDisabled={invalid} />}
+  >
+    <input ref={importInputRef} className="visually-hidden" type="file" accept=".csv,.json,.xlsx,.xls" onChange={() => setMessage('Tệp đã được chọn. Mở tab Import để kiểm tra và áp dụng dữ liệu.')} />
     <section className="packing-workspace" aria-label="Không gian xếp thùng">
-      <header className="workspace-header">
-        <div>
-          <p className="eyebrow">LOGISTICS PACKING STUDIO</p>
-          <h1>Xếp thùng thông minh</h1>
-          <p>Tạo phương án xếp kiện theo thể tích, tải trọng và khả năng chồng hàng ngay trên trình duyệt.</p>
-        </div>
-        <button className="primary-button" type="button" onClick={runPacking}>Xếp thùng</button>
-      </header>
-
-      <div className="workspace-grid">
-        <aside className="control-stack" aria-label="Dữ liệu xếp hàng">
-          <section className="panel">
-            <div className="panel-heading"><div><p className="section-kicker">01</p><h2>Container</h2></div><button type="button" className="text-button" onClick={addContainer}>+ Thêm</button></div>
-            {containers.map((container) => (
-              <fieldset className="input-card" key={container.id}>
-                <legend>{container.name}</legend>
-                <label>Tên<input value={container.name} onChange={(event) => updateContainer(container.id, 'name', event.target.value)} /></label>
-                <div className="input-grid three">
-                  <label>Dài (m)<input aria-invalid={container.length <= 0} type="number" min="0" step="0.1" value={container.length} onChange={(event) => updateContainer(container.id, 'length', event.target.value)} /></label>
-                  <label>Rộng (m)<input aria-invalid={container.width <= 0} type="number" min="0" step="0.1" value={container.width} onChange={(event) => updateContainer(container.id, 'width', event.target.value)} /></label>
-                  <label>Cao (m)<input aria-invalid={container.height <= 0} type="number" min="0" step="0.1" value={container.height} onChange={(event) => updateContainer(container.id, 'height', event.target.value)} /></label>
-                </div>
-                <div className="input-grid two">
-                  <label>Số container<input type="number" min="1" step="1" value={container.quantity} onChange={(event) => updateContainer(container.id, 'quantity', event.target.value)} /></label>
-                  <label>Tải trọng (kg)<input type="number" min="0" step="1" value={container.maxWeight} onChange={(event) => updateContainer(container.id, 'maxWeight', event.target.value)} /></label>
-                </div>
-                {containers.length > 1 && <button type="button" className="remove-button" onClick={() => { setContainers((items) => items.filter((item) => item.id !== container.id)); setResult(null); }}>Xóa container</button>}
-              </fieldset>
-            ))}
-          </section>
-
-          <section className="panel">
-            <div className="panel-heading"><div><p className="section-kicker">02</p><h2>Kiện hàng</h2></div><button type="button" className="text-button" onClick={addCarton}>+ Thêm</button></div>
-            {cartons.map((carton) => (
-              <fieldset className="input-card" key={carton.id}>
-                <legend>{carton.label}</legend>
-                <label>Tên kiện<input value={carton.label} onChange={(event) => updateCarton(carton.id, 'label', event.target.value)} /></label>
-                <div className="input-grid three">
-                  <label>Dài (m)<input aria-invalid={carton.length <= 0} type="number" min="0" step="0.1" value={carton.length} onChange={(event) => updateCarton(carton.id, 'length', event.target.value)} /></label>
-                  <label>Rộng (m)<input aria-invalid={carton.width <= 0} type="number" min="0" step="0.1" value={carton.width} onChange={(event) => updateCarton(carton.id, 'width', event.target.value)} /></label>
-                  <label>Cao (m)<input aria-invalid={carton.height <= 0} type="number" min="0" step="0.1" value={carton.height} onChange={(event) => updateCarton(carton.id, 'height', event.target.value)} /></label>
-                </div>
-                <div className="input-grid three">
-                  <label>Số lượng<input type="number" min="1" step="1" value={carton.quantity} onChange={(event) => updateCarton(carton.id, 'quantity', event.target.value)} /></label>
-                  <label>Nặng (kg)<input type="number" min="0" step="0.1" value={carton.weight} onChange={(event) => updateCarton(carton.id, 'weight', event.target.value)} /></label>
-                  <label>Màu<input aria-label={`Màu ${carton.label}`} type="color" value={carton.color} onChange={(event) => updateCarton(carton.id, 'color', event.target.value)} /></label>
-                </div>
-                <label className="checkbox-label"><input type="checkbox" checked={carton.stackable} onChange={(event) => updateCarton(carton.id, 'stackable', event.target.checked)} />Có thể chồng kiện</label>
-                {cartons.length > 1 && <button type="button" className="remove-button" onClick={() => { setCartons((items) => items.filter((item) => item.id !== carton.id)); setResult(null); }}>Xóa kiện</button>}
-              </fieldset>
-            ))}
-          </section>
-
-          <section className="panel options-panel">
-            <p className="section-kicker">03</p><h2>Quy tắc xếp</h2>
-            <label>Ưu tiên<select value={strategy} onChange={(event) => setStrategy(event.target.value as PackingStrategy)}><option value="minContainers">Ít container nhất</option><option value="maxFill">Tỷ lệ lấp đầy cao</option><option value="inputOrder">Theo thứ tự nhập</option><option value="heavyBottom">Kiện nặng ở dưới</option></select></label>
-            <label className="checkbox-label"><input type="checkbox" checked={allowRotation} onChange={(event) => setAllowRotation(event.target.checked)} />Cho phép xoay kiện</label>
-          </section>
-        </aside>
-
-        <section className="result-stack" aria-live="polite">
-          <div className="status-card"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}</div>
-          <div className="metric-grid">
-            <article><span>Tổng kiện</span><strong>{totalCount}</strong></article><article><span>Đã xếp</span><strong>{packedCount}</strong></article><article><span>Container dùng</span><strong>{usedContainerCount}</strong></article><article><span>Kiện dư</span><strong>{result?.leftover.length ?? 0}</strong></article>
-          </div>
+      <div className="workflow-stepper" aria-label="Quy trình xếp hàng"><span className="complete">1 Chọn container</span><i /><span className="complete">2 Nhập hàng hóa</span><i /><span className="complete">3 Chọn chiến lược</span><i /><span className={result ? 'complete' : 'current'}>4 Tối ưu xếp hàng</span><i /><span className={result ? 'current' : ''}>5 Kiểm tra & xuất</span></div>
+      <div className="work-grid">
+        <section className="simulation-stage" aria-live="polite">
+          <div className="stage-status"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}<span className="stage-context">{result ? `${usedContainerCount} container đang hiển thị` : 'Chờ dữ liệu xếp hàng'}</span></div>
           <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} step={step} />
-          {result && placementCount > 0 && <section className="playback-panel" aria-label="Trình tự xếp hàng">
-            <div><p className="section-kicker">TRÌNH TỰ XẾP</p><strong>Kiện {Math.min(step, placementCount)} / {placementCount}</strong></div>
-            <div className="playback-controls"><button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))}>← Trước</button><input aria-label="Tiến trình xếp hàng" type="range" min="0" max={placementCount} value={step} onChange={(event) => setStep(numberValue(event.target.value))} /><button type="button" onClick={() => setStep((value) => Math.min(placementCount, value + 1))}>Tiếp →</button></div>
-            {selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}
-          </section>}
-          <section className="panel result-panel">
-            <div className="panel-heading"><div><p className="section-kicker">PHƯƠNG ÁN</p><h2>Kết quả xếp hàng</h2></div></div>
-            {!result && <div className="empty-state">Nhấn “Xếp thùng” để tạo phương án và mở không gian 3D.</div>}
-            {result && <>
-              {result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}
-              {result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}
-            </>}
-          </section>
+          {result && placementCount > 0 && <section className="playback-panel" aria-label="Trình tự xếp hàng"><div><p className="section-kicker">PLAYBACK</p><strong>Kiện {Math.min(step, placementCount)} / {placementCount}</strong></div><div className="playback-controls"><button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))}>← Trước</button><input aria-label="Tiến trình xếp hàng" type="range" min="0" max={placementCount} value={step} onChange={(event) => setStep(numberValue(event.target.value))} /><button type="button" onClick={() => setStep((value) => Math.min(placementCount, value + 1))}>Tiếp →</button></div>{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</section>}
         </section>
+        <Inspector containers={containers} cartons={cartons} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={setStrategy} onAllowRotationChange={setAllowRotation} onImportClick={() => importInputRef.current?.click()} />
       </div>
+      <section className="result-panel command-result-panel">
+        <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${placementCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>
+        {!result && <div className="empty-state">Thiết lập container, kiện hàng và chiến lược trong Inspector, sau đó chạy tối ưu để kích hoạt Digital Twin.</div>}
+        {result && <div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div>}
+      </section>
     </section>
-  );
+  </ControlCenterShell>;
 }
