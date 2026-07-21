@@ -64,7 +64,7 @@ export function PackingWorkspace() {
   const kpis = useMemo<KpiMetric[]>(() => [
     { id: 'containers', label: 'Container khả dụng', value: containers.reduce((sum, item) => sum + item.quantity, 0), status: 'Đội container sẵn sàng', progress: 100, tone: 'cyan' },
     { id: 'cartons', label: 'Tổng số hộp', value: totalCount, status: 'Dữ liệu đầu vào', progress: totalCount ? 100 : 0, tone: 'teal' },
-    { id: 'packed', label: 'Đã xếp', value: packedCount, status: result ? `${placementCount ? Math.round((packedCount / placementCount) * 100) : 0}% hoàn tất` : 'Chưa tối ưu', progress: placementCount ? (packedCount / placementCount) * 100 : 0, tone: 'teal' },
+    { id: 'packed', label: 'Đã xếp', value: packedCount, status: result ? `${totalCount ? Math.round((packedCount / totalCount) * 100) : 0}% hoàn tất` : 'Chưa tối ưu', progress: totalCount ? (packedCount / totalCount) * 100 : 0, tone: 'teal' },
     { id: 'leftover', label: 'Chưa xếp', value: result?.leftover.length ?? 0, status: result?.leftover.length ? 'Cần xử lý' : 'Không có cảnh báo', progress: result?.leftover.length ? 100 : 0, tone: result?.leftover.length ? 'coral' : 'amber' },
   ], [containers, packedCount, placementCount, result, totalCount]);
 
@@ -167,7 +167,7 @@ export function PackingWorkspace() {
 
   return <ControlCenterShell
     kpis={kpis}
-    commandBar={<CommandBar title="Bảng điều phối xếp hàng 3D" breadcrumb="Điều hành / Digital Twin / Xếp hàng" isSaved={!result} onImport={() => chooseImport('cartons')} onReset={resetWorkspace} onOptimize={runPacking} optimizeDisabled={invalid}><button className="command-button" type="button" onClick={exportWorkbook}><Download size={16} aria-hidden="true" />Xuất XLSX</button></CommandBar>}
+    commandBar={<CommandBar title="Bảng điều phối xếp hàng 3D" breadcrumb="Điều hành / Digital Twin / Xếp hàng" isSaved={Boolean(result)} onImport={() => chooseImport('cartons')} onReset={resetWorkspace} onOptimize={runPacking} optimizeDisabled={invalid}><button className="command-button" type="button" onClick={exportWorkbook}><Download size={16} aria-hidden="true" />Xuất XLSX</button></CommandBar>}
   >
     <input ref={importInputRef} className="visually-hidden" type="file" accept=".csv,.json,.xlsx,.xls" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importFile(file); event.currentTarget.value = ''; }} />
     <section className="packing-workspace" aria-label="Không gian xếp thùng">
@@ -181,7 +181,7 @@ export function PackingWorkspace() {
         <Inspector containers={containers} cartons={cartons} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={setStrategy} onAllowRotationChange={setAllowRotation} onImportClick={chooseImport} />
       </div>
       <section className="result-panel command-result-panel">
-        <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${placementCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>
+        <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${totalCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>
         {!result && <div className="empty-state">Thiết lập container, kiện hàng và chiến lược trong Inspector, sau đó chạy tối ưu để kích hoạt Digital Twin.</div>}
         {result && <><div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div><PackingResultTable result={result} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} /></>}
       </section>

@@ -25,11 +25,21 @@ function csvRows(text: string): Record<string, unknown>[] {
   return rows.slice(1).map((line) => Object.fromEntries(headers.map((header, index) => [header, split(line)[index] ?? ''])));
 }
 
+function readText(file: File) {
+  if (typeof file.text === 'function') return file.text();
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('Không thể đọc tệp.'));
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.readAsText(file);
+  });
+}
+
 export async function readRowsFromFile(file: File): Promise<Record<string, unknown>[]> {
   const type = extension(file.name);
-  if (type === 'csv') return csvRows(await file.text());
+  if (type === 'csv') return csvRows(await readText(file));
   if (type === 'json') {
-    const data: unknown = JSON.parse(await file.text());
+    const data: unknown = JSON.parse(await readText(file));
     const rows = Array.isArray(data) ? data : data && typeof data === 'object' && Array.isArray((data as { rows?: unknown }).rows) ? (data as { rows: unknown[] }).rows : [];
     if (!rows.every((row) => row && typeof row === 'object' && !Array.isArray(row))) throw new Error('JSON phải là một danh sách các dòng dữ liệu.');
     return rows as Record<string, unknown>[];
