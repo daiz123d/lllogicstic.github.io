@@ -14,20 +14,19 @@ When the operator presses **Tối ưu xếp hàng**, select the most suitable tr
 
 For each iteration, evaluate every standard sample container against the current remaining cartons using the existing packing logic.
 
-1. Prefer a container that packs all remaining cartons, choosing the smallest internal volume.
-2. When no single sample fits all cartons, prefer the candidate with the fewest leftovers.
-3. Break ties by packing more cartons, then by smaller volume.
-4. Append the selected container and its placements to the result.
-5. Repeat with only the cartons left unpacked.
-6. Stop when no candidate packs at least one remaining carton, or every carton is packed.
+1. Sort the sample catalog by internal volume, from the smallest container to the largest.
+2. Choose the first (smallest) sample that can pack at least one remaining carton; it does not need to pack every carton.
+3. Pack that selected container to the capacity produced by the existing packing heuristic, append it to the result, then continue with the cartons left unpacked.
+4. Repeat until all cartons are packed or no sample can pack another carton.
+5. Stop immediately on non-progress and retain cartons that cannot fit any sample as leftovers.
 
-This is the behaviour already represented by `selectBestPresetContainers`; the Next.js adapter will expose it with stable container IDs and the app's `PackingResult` shape.
+The automatic policy therefore prioritizes the smallest usable container and adds another container when that one is full. It intentionally does not select a larger sample merely because that larger sample can hold all remaining cartons.
 
 ## UI and result flow
 
 - Add a strategy choice: **Tự chọn container mẫu** (default) or **Dùng container tự nhập**.
 - The Container inspector presents the standard catalog as a compact, read-only reference when automatic selection is active, instead of requiring the operator to add every candidate manually.
-- The result panel lists the chosen samples in sequence, such as `1 × 5T (VN)` then `1 × 3.5T (VN)`, and keeps leftovers with their existing reason labels.
+- The result status summarizes repeated samples, such as `3 × 1.25T (VN)`, instead of repeating a long list of identical names. Leftovers keep their existing reason labels.
 - The existing 3D viewer renders each container selected by the optimiser and retains its per-container tabs.
 
 ## Failure handling
@@ -39,6 +38,6 @@ This is the behaviour already represented by `selectBestPresetContainers`; the N
 ## Testing
 
 - Adapter test: a carton set that fits a single preset returns that preset with a stable ID.
-- Adapter test: a carton set requiring two presets selects a second sample and leaves no cartons.
+- Adapter test: a carton set that does fit a large preset still starts with the smallest usable preset and adds a second sample when needed.
 - Workspace test: switching to automatic sample mode invokes the sample-selection path and renders the recommended container name.
 - Preserve legacy tests for `selectBestPresetContainers` as algorithm regression coverage.
