@@ -18,7 +18,7 @@ type InspectorProps = {
   onRemoveContainer: (id: string) => void;
   onStrategyChange: (strategy: PackingStrategy) => void;
   onAllowRotationChange: (value: boolean) => void;
-  onImportClick: () => void;
+  onImportClick: (target: 'cartons' | 'containers') => void;
 };
 
 const tabs = [
@@ -70,6 +70,6 @@ export function Inspector(props: InspectorProps) {
 
     {active === 'strategy' && <section id="strategy-panel" role="tabpanel" aria-labelledby="strategy-tab" aria-label="Chiến lược" className="inspector-scroll strategy-panel"><div className="section-head"><div><h3>Quy tắc tối ưu</h3><p>Thay đổi chiến lược rồi chạy tối ưu lại.</p></div></div><Field label="Chiến lược xếp"><select value={props.strategy} onChange={(event) => props.onStrategyChange(event.target.value as PackingStrategy)}><option value="minContainers">Ít container nhất</option><option value="maxFill">Tỷ lệ lấp đầy cao</option><option value="inputOrder">Theo thứ tự nhập</option><option value="heavyBottom">Kiện nặng ở dưới</option></select></Field><label className="switch-field"><input type="checkbox" checked={props.allowRotation} onChange={(event) => props.onAllowRotationChange(event.target.checked)} /><span>Cho phép xoay kiện để tận dụng không gian</span></label></section>}
 
-    {active === 'import' && <section id="import-panel" role="tabpanel" aria-labelledby="import-tab" aria-label="Import" className="inspector-scroll import-panel"><FileUp size={26} aria-hidden="true" /><h3>Nhập dữ liệu xếp hàng</h3><p>Hỗ trợ tệp CSV, JSON, XLSX và XLS. Dữ liệu hợp lệ sẽ được thêm vào danh sách hiện tại.</p><button type="button" className="teal-action" onClick={props.onImportClick}>Chọn tệp để nhập</button></section>}
+    {active === 'import' && <section id="import-panel" role="tabpanel" aria-labelledby="import-tab" aria-label="Import" className="inspector-scroll import-panel"><FileUp size={26} aria-hidden="true" /><h3>Nhập dữ liệu xếp hàng</h3><p>Hỗ trợ tệp CSV, JSON, XLSX và XLS. Dữ liệu hợp lệ sẽ được thêm vào danh sách hiện tại.</p><div className="import-actions"><button type="button" className="teal-action" onClick={() => props.onImportClick('cartons')}>Nhập hàng hóa</button><button type="button" className="command-button" onClick={() => props.onImportClick('containers')}>Nhập container</button></div></section>}
   </aside>;
 }

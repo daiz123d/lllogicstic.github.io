@@ -41,3 +41,4 @@ export type Leftover = Placement & { reason: LeftoverReason };
 export type PackedContainer = { container: Omit<ContainerInput, 'quantity'>; packed: Placement[]; unpacked: Leftover[] };
 export type PackingResult = { results: PackedContainer[]; leftover: Leftover[] };
 export type ImportedCartons = { boxes: Omit<CartonInput, 'id' | 'label'>[]; skipped: number };
+export type ImportedContainers = { containers: Omit<ContainerInput, 'id'>[]; skipped: number };

@@ -1,11 +1,15 @@
 'use client';
 
+import { Download } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 
 import { CommandBar } from '@/components/control-center/command-bar';
 import { ControlCenterShell } from '@/components/control-center/control-center-shell';
 import type { KpiMetric } from '@/components/control-center/kpi-strip';
+import { parseContainerRows } from '@/lib/packing/container-import';
 import { packMultipleContainers } from '@/lib/packing/engine';
+import { downloadPackingWorkbook, readRowsFromFile } from '@/lib/packing/file-io';
+import { parseCartonRows } from '@/lib/packing/import';
 import type { CartonInput, ContainerInput, PackingResult, PackingStrategy } from '@/lib/packing/types';
 import { Inspector } from './inspector';
 import { PackingViewer, placementKey } from './packing-viewer';
@@ -36,6 +40,8 @@ function isValidCarton(carton: CartonInput) {
   return carton.length > 0 && carton.width > 0 && carton.height > 0 && carton.quantity > 0 && carton.weight >= 0;
 }
 
+type ImportTarget = 'cartons' | 'containers';
+
 export function PackingWorkspace() {
   const [containers, setContainers] = useState(defaultContainers);
   const [cartons, setCartons] = useState(defaultCartons);
@@ -46,6 +52,7 @@ export function PackingWorkspace() {
   const [step, setStep] = useState(0);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [importTarget, setImportTarget] = useState<ImportTarget>('cartons');
 
   const invalid = !containers.every(isValidContainer) || !cartons.every(isValidCarton);
   const packedCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
@@ -124,11 +131,44 @@ export function PackingWorkspace() {
     setStep(0);
   }
 
+  function chooseImport(target: ImportTarget) {
+    setImportTarget(target);
+    importInputRef.current?.click();
+  }
+
+  async function importFile(file: File) {
+    try {
+      const rows = await readRowsFromFile(file);
+      if (importTarget === 'cartons') {
+        const parsed = parseCartonRows(rows);
+        const imported = parsed.boxes.map((box, index) => ({ ...box, id: id('carton'), label: `Kiện nhập ${cartons.length + index + 1}` }));
+        if (!imported.length) throw new Error('Không tìm thấy kiện hàng hợp lệ trong tệp.');
+        setCartons((items) => [...items, ...imported]);
+        setMessage(`Đã thêm ${imported.length} kiện hàng${parsed.skipped ? `, bỏ qua ${parsed.skipped} dòng không hợp lệ` : ''}.`);
+      } else {
+        const parsed = parseContainerRows(rows);
+        const imported = parsed.containers.map((container) => ({ ...container, id: id('container') }));
+        if (!imported.length) throw new Error('Không tìm thấy container hợp lệ trong tệp.');
+        setContainers((items) => [...items, ...imported]);
+        setMessage(`Đã thêm ${imported.length} container${parsed.skipped ? `, bỏ qua ${parsed.skipped} dòng không hợp lệ` : ''}.`);
+      }
+      setResult(null);
+      setStep(0);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không thể đọc tệp đã chọn.');
+    }
+  }
+
+  async function exportWorkbook() {
+    await downloadPackingWorkbook(cartons, containers, result);
+    setMessage('Đã tạo tệp Excel để tải xuống.');
+  }
+
   return <ControlCenterShell
     kpis={kpis}
-    commandBar={<CommandBar title="Bảng điều phối xếp hàng 3D" breadcrumb="Điều hành / Digital Twin / Xếp hàng" isSaved={!result} onImport={() => importInputRef.current?.click()} onReset={resetWorkspace} onOptimize={runPacking} optimizeDisabled={invalid} />}
+    commandBar={<CommandBar title="Bảng điều phối xếp hàng 3D" breadcrumb="Điều hành / Digital Twin / Xếp hàng" isSaved={!result} onImport={() => chooseImport('cartons')} onReset={resetWorkspace} onOptimize={runPacking} optimizeDisabled={invalid}><button className="command-button" type="button" onClick={exportWorkbook}><Download size={16} aria-hidden="true" />Xuất XLSX</button></CommandBar>}
   >
-    <input ref={importInputRef} className="visually-hidden" type="file" accept=".csv,.json,.xlsx,.xls" onChange={() => setMessage('Tệp đã được chọn. Mở tab Import để kiểm tra và áp dụng dữ liệu.')} />
+    <input ref={importInputRef} className="visually-hidden" type="file" accept=".csv,.json,.xlsx,.xls" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importFile(file); event.currentTarget.value = ''; }} />
     <section className="packing-workspace" aria-label="Không gian xếp thùng">
       <div className="workflow-stepper" aria-label="Quy trình xếp hàng"><span className="complete">1 Chọn container</span><i /><span className="complete">2 Nhập hàng hóa</span><i /><span className="complete">3 Chọn chiến lược</span><i /><span className={result ? 'complete' : 'current'}>4 Tối ưu xếp hàng</span><i /><span className={result ? 'current' : ''}>5 Kiểm tra & xuất</span></div>
       <div className="work-grid">
@@ -137,7 +177,7 @@ export function PackingWorkspace() {
           <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} step={step} />
           {result && placementCount > 0 && <section className="playback-panel" aria-label="Trình tự xếp hàng"><div><p className="section-kicker">PLAYBACK</p><strong>Kiện {Math.min(step, placementCount)} / {placementCount}</strong></div><div className="playback-controls"><button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))}>← Trước</button><input aria-label="Tiến trình xếp hàng" type="range" min="0" max={placementCount} value={step} onChange={(event) => setStep(numberValue(event.target.value))} /><button type="button" onClick={() => setStep((value) => Math.min(placementCount, value + 1))}>Tiếp →</button></div>{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</section>}
         </section>
-        <Inspector containers={containers} cartons={cartons} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={setStrategy} onAllowRotationChange={setAllowRotation} onImportClick={() => importInputRef.current?.click()} />
+        <Inspector containers={containers} cartons={cartons} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={setStrategy} onAllowRotationChange={setAllowRotation} onImportClick={chooseImport} />
       </div>
       <section className="result-panel command-result-panel">
         <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${placementCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>
