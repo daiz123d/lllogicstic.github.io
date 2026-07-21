@@ -7,7 +7,7 @@ describe('PackingViewer', () => {
   it('switches to a readable 2D plan', () => {
     render(<PackingViewer packedContainers={[]} selectedPlacementId={null} onSelectPlacement={() => {}} step={0} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /mặt bằng 2d/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^mặt bằng$/i }));
 
     expect(screen.getByLabelText(/sơ đồ xếp 2d/i)).toBeInTheDocument();
   });

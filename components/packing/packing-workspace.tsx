@@ -12,6 +12,7 @@ import { downloadPackingWorkbook, readRowsFromFile } from '@/lib/packing/file-io
 import { parseCartonRows } from '@/lib/packing/import';
 import type { CartonInput, ContainerInput, PackingResult, PackingStrategy } from '@/lib/packing/types';
 import { Inspector } from './inspector';
+import { PackingResultTable } from './packing-result-table';
 import { PackingViewer, placementKey } from './packing-viewer';
 
 const defaultContainers: ContainerInput[] = [{
@@ -182,7 +183,7 @@ export function PackingWorkspace() {
       <section className="result-panel command-result-panel">
         <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${placementCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>
         {!result && <div className="empty-state">Thiết lập container, kiện hàng và chiến lược trong Inspector, sau đó chạy tối ưu để kích hoạt Digital Twin.</div>}
-        {result && <div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div>}
+        {result && <><div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div><PackingResultTable result={result} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} /></>}
       </section>
     </section>
   </ControlCenterShell>;
