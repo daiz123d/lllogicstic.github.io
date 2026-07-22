@@ -67,7 +67,7 @@ function Scene({ container, placements, selectedPlacementId, onSelectPlacement, 
   wireframe: boolean;
 }) {
   const { width, height, length } = container.container;
-  const cargoFocus = getCargoFocus(container, placements);
+  const cargoFocus = useMemo(() => getCargoFocus(container, placements), [container, placements]);
 
   return <Canvas camera={{ position: [width * 1.4, height * 1.1 + 2, length * 1.4], fov: 44 }} shadows dpr={[1, 2]}>
     <color attach="background" args={['#07131F']} />
@@ -136,7 +136,7 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   const supportsWebgl = useMemo(() => typeof window !== 'undefined' && 'WebGLRenderingContext' in window, []);
   const usedContainers = packedContainers.filter((item) => item.packed.length > 0);
   const active = usedContainers.find((item) => item.container.id === activeId) ?? usedContainers[0];
-  const visiblePlacements = active ? active.packed.slice(0, Math.max(0, step)) : [];
+  const visiblePlacements = useMemo(() => active ? active.packed.slice(0, Math.max(0, step)) : [], [active, step]);
   const insights = active ? getPackingInsights(active) : null;
 
   function enterFullscreen() {
