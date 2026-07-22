@@ -111,8 +111,29 @@ test('keeps PIP and Quad on one canvas at the 640px breakpoint', async ({ page }
   await expect(page.locator('canvas')).toHaveCount(1);
 });
 
+test('progressively falls back at 641px and restores multi-canvas when the stage is wide enough', async ({ page }) => {
+  await page.setViewportSize({ width: 641, height: 900 });
+  await optimize(page);
+  await page.getByRole('button', { name: 'PIP' }).click();
+  await expect(page.locator('canvas')).toHaveCount(1);
+  await expect(page.getByRole('tablist', { name: 'Góc nhìn camera' })).toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.locator('canvas')).toHaveCount(3);
+  const layoutBox = await page.locator('.viewport-pip').boundingBox();
+  const mainBox = await page.locator('.viewport-main').boundingBox();
+  const pipBox = await page.locator('.pip-stack').boundingBox();
+  expect(layoutBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+  expect(pipBox).not.toBeNull();
+  expect((pipBox!.x - mainBox!.x) / layoutBox!.width).toBeGreaterThanOrEqual(.7);
+});
+
 test('hydrates the app from the GitHub Pages mount path', async ({ page }) => {
-  await page.goto('/lllogicstic.github.io/');
+  const response = await page.goto('/lllogicstic.github.io/');
+  if (process.env.EXPECT_PAGES_BASE_PATH === '1') {
+    expect(await response?.text()).toContain('/lllogicstic.github.io/_next/');
+  }
   await page.getByRole('button', { name: 'Tối ưu xếp hàng' }).click();
   await expect(page.getByLabel('Hybrid Isometric Cutaway')).toBeVisible();
 });

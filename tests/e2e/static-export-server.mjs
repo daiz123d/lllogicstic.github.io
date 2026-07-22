@@ -60,8 +60,7 @@ export function createStaticExportServer({ rootDirectory = path.resolve(process.
       return;
     }
 
-    const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
-    const candidates = resolveStaticCandidates(pathname, basePath);
+    const candidates = resolveStaticCandidates(request.url ?? '/', basePath);
     if (!candidates.length) {
       response.writeHead(400);
       response.end('Bad Request');

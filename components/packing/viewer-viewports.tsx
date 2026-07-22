@@ -19,6 +19,10 @@ export type ViewerViewportsProps = {
 };
 
 const PRESETS: ViewPreset[] = ['iso', 'top', 'front', 'side'];
+const PIP_MIN_WIDTH = 150;
+const PIP_INLINE_GUTTERS = 24;
+const MIN_UNCOVERED_MAIN_RATIO = .7;
+const MIN_MULTI_VIEWPORT_WIDTH = Math.ceil((PIP_MIN_WIDTH + PIP_INLINE_GUTTERS) / (1 - MIN_UNCOVERED_MAIN_RATIO));
 const PRESET_LABELS: Record<ViewPreset, string> = {
   iso: 'Isometric',
   top: 'Mặt trên',
@@ -31,19 +35,28 @@ function getPipPresets(mainPreset: ViewPreset, preferred: ViewPreset[] = ['top',
   return unique.filter((preset) => preset !== mainPreset).slice(0, 2);
 }
 
-function useMobileViewports() {
-  const [mobile, setMobile] = useState(false);
+function useCompactViewports() {
+  const [layoutElement, setLayoutElement] = useState<HTMLDivElement | null>(null);
+  const [compact, setCompact] = useState(false);
 
   useEffect(() => {
     const query = window.matchMedia?.('(max-width: 640px)');
-    if (!query) return;
-    const update = () => setMobile(query.matches);
+    const update = () => {
+      const layoutWidth = layoutElement?.getBoundingClientRect().width ?? 0;
+      const stageNeedsFallback = layoutWidth > 0 && layoutWidth < MIN_MULTI_VIEWPORT_WIDTH;
+      setCompact(Boolean(query?.matches || stageNeedsFallback));
+    };
     update();
-    query.addEventListener?.('change', update);
-    return () => query.removeEventListener?.('change', update);
-  }, []);
+    query?.addEventListener?.('change', update);
+    const observer = layoutElement && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (layoutElement) observer?.observe(layoutElement);
+    return () => {
+      query?.removeEventListener?.('change', update);
+      observer?.disconnect();
+    };
+  }, [layoutElement]);
 
-  return mobile;
+  return { compact, setLayoutElement };
 }
 
 function Viewport({ preset, label, sceneProps, className = '', primary = false }: {
@@ -59,7 +72,7 @@ function Viewport({ preset, label, sceneProps, className = '', primary = false }
 }
 
 export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, onMainPresetChange, onTogglePip }: ViewerViewportsProps) {
-  const mobile = useMobileViewports();
+  const { compact, setLayoutElement } = useCompactViewports();
   const [pipPresets, setPipPresets] = useState<ViewPreset[]>(() => getPipPresets(mainPreset));
   const previousMainPreset = useRef(mainPreset);
   const mobilePanelId = useId();
@@ -93,8 +106,8 @@ export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, 
     mobileTabRefs.current[nextIndex]?.focus();
   }
 
-  if (mobile) {
-    return <div className="viewport-layout viewport-mobile">
+  if (compact) {
+    return <div className="viewport-layout viewport-mobile" ref={setLayoutElement}>
       <div className="viewport-preset-tabs" role="tablist" aria-label="Góc nhìn camera">
         {PRESETS.map((preset, index) => {
           const selected = preset === mainPreset;
@@ -121,18 +134,18 @@ export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, 
   }
 
   if (layout === 'single') {
-    return <div className="viewport-layout viewport-single">
+    return <div className="viewport-layout viewport-single" ref={setLayoutElement}>
       <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport`} sceneProps={sceneProps} primary />
     </div>;
   }
 
   if (layout === 'quad') {
-    return <div className="viewport-layout viewport-quad">
+    return <div className="viewport-layout viewport-quad" ref={setLayoutElement}>
       {PRESETS.map((preset) => <Viewport key={preset} preset={preset} label={`${PRESET_LABELS[preset]} viewport`} sceneProps={{ ...sceneProps, showLabels: preset === mainPreset }} primary={preset === mainPreset} />)}
     </div>;
   }
 
-  return <div className="viewport-layout viewport-pip">
+  return <div className="viewport-layout viewport-pip" ref={setLayoutElement}>
     <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport chính`} sceneProps={sceneProps} className="viewport-main" primary />
     <div className="pip-stack">
       {visiblePipPresets.map((preset, index) => collapsedPip.includes(preset)

@@ -104,8 +104,9 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 .pip-actions button, .pip-restore, .viewport-preset-tabs button { min-height: 26px; padding: 0 7px; border: 1px solid var(--port-line-strong); border-radius: 4px; color: var(--port-text); background: rgba(7, 19, 31, .9); cursor: pointer; font-size: .58rem; }
 .pip-restore { align-self: center; justify-self: stretch; }
 .viewport-quad { display: grid; height: min(540px, 62vh); min-height: 430px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 6px; }
-.viewport-mobile { min-height: 340px; }
+.viewport-mobile { display: grid; min-height: 340px; grid-template-rows: auto minmax(0, 1fr); }
 .viewport-mobile .packing-viewport { height: 310px; }
+.viewport-mobile [role="tabpanel"] { min-width: 0; min-height: 0; }
 .viewport-preset-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px; border-bottom: 1px solid var(--port-line); }
 .viewport-preset-tabs button.active { border-color: var(--port-cyan); color: var(--port-cyan); background: rgba(34, 211, 238, .1); }
 .viewer-observation-warning { padding: 7px 13px; border-bottom: 1px solid rgba(251, 191, 36, .45); color: var(--port-amber); background: rgba(251, 191, 36, .08); font-size: .66rem; font-weight: 800; text-align: center; }
@@ -117,8 +118,6 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 
 @media (max-width: 640px) {
   .viewport-layout-controls { flex-wrap: wrap; overflow: visible; }
-  .viewport-mobile { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-  .viewport-mobile [role="tabpanel"] { min-width: 0; min-height: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
