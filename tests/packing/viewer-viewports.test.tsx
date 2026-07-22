@@ -178,6 +178,11 @@ describe('observation modes', () => {
 
     expect(modelSpies.getEmptyRegions).toHaveBeenCalledTimes(1);
     expect(container.querySelector('[name="empty-region-empty-0"]')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Solid' }));
+    expect(modelSpies.getEmptyRegions).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[name^="empty-region-"]')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Thể tích chưa sử dụng' })).not.toBeInTheDocument();
   });
 
   it('shares one Space calculation across four Quad View canvases', () => {

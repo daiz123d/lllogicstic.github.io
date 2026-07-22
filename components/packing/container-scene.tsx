@@ -346,7 +346,7 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
   const entryPlacement = placements.at(-1);
   const entry = useEntryAnimation(entryPlacement ? placementKey(packedContainer.container.id, entryPlacement) : undefined, reducedMotion);
 
-  return <div className="scene-canvas" onContextMenu={(event) => event.preventDefault()}>
+  return <div className="scene-canvas" data-empty-region-count={mode === 'space' ? emptyRegions.length : 0} onContextMenu={(event) => event.preventDefault()}>
     <Canvas shadows dpr={[1, 2]}>
       <color attach="background" args={['#07131f']} />
       <OrthographicCamera makeDefault />
