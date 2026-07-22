@@ -6,11 +6,12 @@ import { PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
 const dreiSpies = vi.hoisted(() => ({ transformControls: vi.fn(() => null) }));
+const threeSpies = vi.hoisted(() => ({ positionSet: vi.fn(), lookAt: vi.fn(), updateProjectionMatrix: vi.fn() }));
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="scene-canvas">{children}</div>,
   useThree: () => ({
-    camera: { position: { set: vi.fn() }, lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoom: 1 },
+    camera: { position: { set: threeSpies.positionSet }, lookAt: threeSpies.lookAt, updateProjectionMatrix: threeSpies.updateProjectionMatrix, zoom: 1 },
     size: { width: 1200, height: 700 },
   }),
 }));
@@ -67,5 +68,31 @@ describe('ContainerScene viewer contract', () => {
     />);
 
     expect(dreiSpies.transformControls).not.toHaveBeenCalled();
+  });
+
+  it('reapplies the camera frame when switching equal-dimension containers', () => {
+    const sameSizedContainer: PackedContainer = {
+      ...packedContainer,
+      container: { ...packedContainer.container, id: 'container-2', name: '5T (VN) 2' },
+      packed: [{ ...packedContainer.packed[0], x: 1 }],
+    };
+    const sceneProps = {
+      placements: packedContainer.packed,
+      selectedPlacementId: null,
+      hoveredPlacementId: null,
+      preset: 'iso' as const,
+      mode: 'solid' as const,
+      shell: { all: true, left: true, right: true, roof: true, front: false },
+      focusToken: 'fit:0',
+      onSelectPlacement: () => {},
+      onHoverPlacement: () => {},
+      onRequestFocus: () => {},
+    };
+    const { rerender } = render(<ContainerScene packedContainer={packedContainer} {...sceneProps} />);
+
+    threeSpies.positionSet.mockClear();
+    rerender(<ContainerScene packedContainer={sameSizedContainer} placements={sameSizedContainer.packed} {...sceneProps} />);
+
+    expect(threeSpies.positionSet).toHaveBeenCalled();
   });
 });

@@ -26,6 +26,7 @@ export type ContainerSceneProps = {
 };
 
 type CameraControllerProps = Pick<ContainerSceneProps, 'preset' | 'focusToken' | 'placements' | 'packedContainer'> & {
+  activeContainerId: string;
   controls: React.RefObject<OrbitControlsImpl | null>;
 };
 
@@ -33,7 +34,7 @@ function placementKey(containerId: string, placement: Placement) {
   return `${containerId}:${placement.order}`;
 }
 
-function CameraController({ preset, focusToken, packedContainer, placements, controls }: CameraControllerProps) {
+function CameraController({ preset, focusToken, packedContainer, placements, activeContainerId, controls }: CameraControllerProps) {
   const { camera, size } = useThree();
   const { width, height, length } = packedContainer.container;
 
@@ -41,7 +42,7 @@ function CameraController({ preset, focusToken, packedContainer, placements, con
     const frame = getCameraFrame({ width, height, length }, preset, size.width, size.height);
     const focusKey = focusToken.startsWith('placement:') ? focusToken.slice('placement:'.length, focusToken.lastIndexOf(':')) : null;
     const focusedPlacement = focusKey
-      ? placements.find((placement) => placementKey(packedContainer.container.id, placement) === focusKey)
+      ? placements.find((placement) => placementKey(activeContainerId, placement) === focusKey)
       : undefined;
     const target: [number, number, number] = focusedPlacement
       ? [
@@ -63,7 +64,7 @@ function CameraController({ preset, focusToken, packedContainer, placements, con
     camera.updateProjectionMatrix();
     controls.current?.target.set(...target);
     controls.current?.update();
-  }, [preset, focusToken, width, height, length, placements.length, size.width, size.height]);
+  }, [preset, focusToken, activeContainerId, width, height, length, placements.length, size.width, size.height]);
 
   return null;
 }
@@ -161,7 +162,7 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
     <Canvas shadows dpr={[1, 2]}>
       <color attach="background" args={['#07131f']} />
       <OrthographicCamera makeDefault />
-      <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} placements={placements} controls={controls} />
+      <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} placements={placements} activeContainerId={packedContainer.container.id} controls={controls} />
       <hemisphereLight intensity={1.1} color="#d9f7ff" groundColor="#10283d" />
       <directionalLight castShadow intensity={1.8} position={[width, height * 2 + 3, length]} />
       <Shell packedContainer={packedContainer} shell={shell} />

@@ -74,6 +74,17 @@ export function PackingWorkspace() {
   function requestFocus(key: string) {
     setFocusRequest((current) => ({ key: key === 'fit' ? 'fit' : `placement:${key}`, nonce: current.nonce + 1 }));
   }
+
+  function selectPlacement(placementId: string) {
+    const owner = result?.results.find((item) => item.container.id === placementId.slice(0, placementId.lastIndexOf(':')));
+    const placementIndex = owner?.packed.findIndex((placement) => placementKey(owner.container.id, placement) === placementId) ?? -1;
+    if (owner && placementIndex >= 0) {
+      const placement = owner.packed[placementIndex];
+      const revealStep = placement.order === placementIndex + 1 ? placement.order : placementIndex + 1;
+      setStep((current) => Math.max(current, revealStep));
+    }
+    setSelectedPlacementId(placementId);
+  }
   const kpis = useMemo<KpiMetric[]>(() => [
     { id: 'containers', label: 'Container khả dụng', value: containerMode === 'presets' ? sampleContainers.length : containers.reduce((sum, item) => sum + item.quantity, 0), status: containerMode === 'presets' ? 'Thư viện container mẫu' : 'Đội container sẵn sàng', progress: 100, tone: 'cyan' },
     { id: 'cartons', label: 'Tổng số hộp', value: totalCount, status: 'Dữ liệu đầu vào', progress: totalCount ? 100 : 0, tone: 'teal' },
@@ -212,7 +223,7 @@ export function PackingWorkspace() {
       <div className="work-grid">
         <section className="simulation-stage" aria-live="polite">
           <div className="stage-status"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}<span className="stage-context">{result ? `${usedContainerCount} container đang hiển thị` : 'Chờ dữ liệu xếp hàng'}</span></div>
-          <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} step={step} focusToken={focusToken} onRequestFocus={requestFocus} />
+          <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} step={step} focusToken={focusToken} onRequestFocus={requestFocus} />
           {result && placementCount > 0 && <section className="playback-panel" aria-label="Trình tự xếp hàng"><div><p className="section-kicker">PLAYBACK</p><strong>Kiện {Math.min(step, placementCount)} / {placementCount}</strong></div><div className="playback-controls"><button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))}>← Trước</button><input aria-label="Tiến trình xếp hàng" type="range" min="0" max={placementCount} value={step} onChange={(event) => setStep(numberValue(event.target.value))} /><button type="button" onClick={() => setStep((value) => Math.min(placementCount, value + 1))}>Tiếp →</button></div>{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</section>}
         </section>
         <Inspector containers={containers} cartons={cartons} containerMode={containerMode} sampleContainers={sampleContainers} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onContainerModeChange={updateContainerMode} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={updateStrategy} onAllowRotationChange={updateAllowRotation} onImportClick={chooseImport} />
@@ -220,7 +231,7 @@ export function PackingWorkspace() {
       <section className="result-panel command-result-panel">
         <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${totalCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>
         {!result && <div className="empty-state">Thiết lập container, kiện hàng và chiến lược trong Inspector, sau đó chạy tối ưu để kích hoạt Digital Twin.</div>}
-        {result && <><div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div><PackingResultTable result={result} selectedPlacementId={selectedPlacementId} onSelectPlacement={setSelectedPlacementId} onFocusPlacement={requestFocus} /></>}
+        {result && <><div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div><PackingResultTable result={result} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} onFocusPlacement={requestFocus} /></>}
       </section>
     </section>
   </ControlCenterShell>;
