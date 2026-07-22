@@ -22,6 +22,14 @@ async function configureLargeScene(page: import('@playwright/test').Page) {
   await expect(page.getByText('Bước 150/150')).toBeVisible();
 }
 
+async function configurePlaybackScene(page: import('@playwright/test').Page, quantity = 12) {
+  await page.goto('/');
+  await page.getByRole('tabpanel', { name: 'Hàng hóa' }).getByRole('spinbutton', { name: 'Số lượng' }).fill(String(quantity));
+  await page.getByRole('button', { name: 'Tối ưu xếp hàng' }).click();
+  await expect(page.getByLabel('Hybrid Isometric Cutaway')).toBeVisible();
+  await expect(page.getByText(`Bước 0/${quantity}`)).toBeVisible();
+}
+
 type PlaybackTimerRecord = { id: number; delay: number; status: 'active' | 'cleared' | 'fired' };
 type PlaybackTimerStats = { active: number; activeTimerIds: number[]; peakActive: number; scheduled: number; cleared: number; fired: number; timers: PlaybackTimerRecord[] };
 type PlaybackTimerBoundary = { stats: PlaybackTimerStats; timer: PlaybackTimerRecord };
@@ -317,6 +325,11 @@ test('keeps a 150-placement scene interactive without mounting disabled work', a
 
   await page.getByRole('region', { name: 'Bảng chi tiết phương án xếp' }).getByRole('button', { name: 'Hộp mẫu', exact: true }).first().click();
   await expect(page.locator('.selected-detail')).toContainText('Đang chọn: Hộp mẫu');
+});
+
+test('keeps one playback timer through speed, pause, and reset boundaries', async ({ page }) => {
+  test.setTimeout(60_000);
+  await configurePlaybackScene(page);
 
   await page.getByRole('slider', { name: 'Tiến trình xếp hàng' }).fill('0');
   await installPlaybackTimerProbe(page);
@@ -356,7 +369,7 @@ test('keeps a 150-placement scene interactive without mounting disabled work', a
     const resetTimer = resetBoundary.timer;
     expect(resetTimer.id).not.toBe(pauseTimer.id);
     expect(resetTimer).toMatchObject({ status: 'active', delay: 1300 });
-    await expect(page.getByText(/Bước \d+\/150/)).toHaveCount(0);
+    await expect(page.getByText(/Bước \d+\/12/)).toHaveCount(0);
     await expect.poll(async () => getTimerById(await playbackTimerStats(page), resetTimer.id)?.status).toBe('cleared');
     timerStats = await playbackTimerStats(page);
     expect(timerStats).toMatchObject({ active: 0, peakActive: 1, cleared: resetBoundary.stats.cleared + 1, fired: resetBoundary.stats.fired });

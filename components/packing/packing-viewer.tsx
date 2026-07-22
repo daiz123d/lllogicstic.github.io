@@ -8,12 +8,12 @@ import type { Leftover, PackedContainer, Placement } from '@/lib/packing/types';
 import { createPlacementDraft, toPlacementOverride, validatePlacementDraft } from '@/lib/packing/manual-layout';
 import type { ManualAxis, ManualSnap, ManualTransformMode, PlacementDraft } from '@/lib/packing/manual-layout';
 
-import { ViewerControls } from './viewer-controls';
+import { ViewerControls, ViewerHud } from './viewer-controls';
 import { ViewerManualControls } from './viewer-manual-controls';
 import { ViewerViewports } from './viewer-viewports';
 import type { ViewportLayout } from './viewer-viewports';
 import { getEmptyRegions, getViewerMetrics } from './viewer-model';
-import type { RenderMode, ShellVisibility, ViewPreset } from './viewer-types';
+import type { PlaybackTransitionDescriptor, RenderMode, ShellVisibility, ViewPreset } from './viewer-types';
 
 type ViewerProps = {
   packedContainers: PackedContainer[];
@@ -21,6 +21,8 @@ type ViewerProps = {
   onSelectPlacement: (placementId: string) => void;
   step: number;
   leftovers?: Leftover[];
+  playbackTransition?: PlaybackTransitionDescriptor | null;
+  playbackActive?: boolean;
   reducedMotion?: boolean;
   focusToken?: string;
   onRequestFocus?: (key: string) => void;
@@ -69,6 +71,18 @@ export function getGlobalPlacementStep(packedContainers: PackedContainer[], cont
   return getContainerPlaybackOffset(packedContainers, containerId) + clamp(placementIndex, 0, Math.max(0, container.packed.length - 1)) + 1;
 }
 
+export function getGlobalPlacementOwner(packedContainers: PackedContainer[], globalStep: number) {
+  if (globalStep < 1) return null;
+  let remaining = Math.floor(globalStep);
+  for (const packedContainer of packedContainers) {
+    if (remaining <= packedContainer.packed.length) {
+      return { containerId: packedContainer.container.id, placementIndex: remaining - 1 };
+    }
+    remaining -= packedContainer.packed.length;
+  }
+  return null;
+}
+
 function getPackingInsights(container: PackedContainer) {
   const count = container.packed.length;
   const packedVolume = container.packed.reduce((total, placement) => total + placement.width * placement.height * placement.length, 0);
@@ -115,13 +129,16 @@ export function PlanView({ container, placements, selectedPlacementId, onSelectP
 export function hasWebglSupport(documentObject: Pick<Document, 'createElement'>) {
   try {
     const canvas = documentObject.createElement('canvas');
-    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+    const context = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!context) return false;
+    context.getExtension?.('WEBGL_lose_context')?.loseContext();
+    return true;
   } catch {
     return false;
   }
 }
 
-export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, leftovers = [], reducedMotion = false, focusToken = 'fit:0', onRequestFocus = () => {}, onApplyPlacementOverride = () => {} }: ViewerProps) {
+export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, leftovers = [], playbackTransition = null, playbackActive = false, reducedMotion = false, focusToken = 'fit:0', onRequestFocus = () => {}, onApplyPlacementOverride = () => {} }: ViewerProps) {
   const [mode, setMode] = useState<'3d' | '2d'>('3d');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [preset, setPreset] = useState<ViewPreset>('iso');
@@ -148,13 +165,34 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     const selectedContainer = usedContainers.find((item) => selectedPlacementId?.startsWith(`${item.container.id}:`));
     if (selectedContainer) setActiveId(selectedContainer.container.id);
   }, [packedContainers, selectedPlacementId]);
+  const playbackEntry = playbackTransition?.source === 'playback'
+    && playbackTransition.toStep === step
+    && playbackTransition.toStep === playbackTransition.fromStep + 1
+    ? playbackTransition
+    : null;
+  const candidatePlaybackEntryOwner = playbackEntry ? getGlobalPlacementOwner(packedContainers, playbackEntry.toStep) : null;
+  const playbackEntryOwner = candidatePlaybackEntryOwner?.containerId === playbackEntry?.ownerContainerId ? candidatePlaybackEntryOwner : null;
+  const transitionBoundaryOwnerId = useMemo(() => {
+    if (!playbackEntry || !playbackEntryOwner) return null;
+    const fromOwner = getGlobalPlacementOwner(packedContainers, playbackEntry.fromStep);
+    return fromOwner?.containerId === playbackEntryOwner.containerId ? null : playbackEntryOwner.containerId;
+  }, [packedContainers, playbackEntry, playbackEntryOwner]);
+  useEffect(() => {
+    if (transitionBoundaryOwnerId && usedContainers.some((item) => item.container.id === transitionBoundaryOwnerId)) setActiveId(transitionBoundaryOwnerId);
+  }, [transitionBoundaryOwnerId]);
   const active = usedContainers.find((item) => item.container.id === activeId) ?? usedContainers[0];
   const visibleCount = active ? getVisiblePlacementCount(packedContainers, active.container.id, step) : 0;
   const visiblePlacements = useMemo(() => active ? active.packed.slice(0, visibleCount) : [], [active, visibleCount]);
+  const enteringPlacement = active && playbackEntryOwner?.containerId === active.container.id
+    ? active.packed[playbackEntryOwner.placementIndex] ?? null
+    : null;
+  const nextOwner = playbackActive ? getGlobalPlacementOwner(packedContainers, step + 1) : null;
+  const nextPlacement = active && nextOwner?.containerId === active.container.id ? active.packed[nextOwner.placementIndex] ?? null : null;
   const playbackState = active ? {
     visibleCount,
-    enteringPlacementId: visibleCount > 0 ? placementKey(active.container.id, active.packed[visibleCount - 1]) : null,
-    nextPlacement: active.packed[visibleCount] ?? null,
+    enteringPlacementId: enteringPlacement ? placementKey(active.container.id, enteringPlacement) : null,
+    nextPlacement,
+    transition: enteringPlacement ? playbackEntry : null,
   } : undefined;
   const insights = active ? getPackingInsights(active) : null;
   const globalPackedTotal = packedContainers.reduce((total, packedContainer) => total + packedContainer.packed.length, 0);
@@ -163,6 +201,15 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     ...activeMetrics,
     packed: clamp(step, 0, globalPackedTotal),
     total: globalPackedTotal + leftovers.length,
+  } : leftovers.length ? {
+    usedVolume: 0,
+    volumePercent: 0,
+    usedWeight: 0,
+    maxWeight: 0,
+    weightPercent: 0,
+    packed: 0,
+    total: leftovers.length,
+    floorOnly: 0,
   } : null;
   const selected = active ? visiblePlacements.find((placement) => placementKey(active.container.id, placement) === selectedPlacementId) ?? null : null;
   const manualDraft = manualDraftState?.key === selectedPlacementId ? manualDraftState.draft : null;
@@ -220,7 +267,8 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
 
   return <section className="viewer-panel" aria-label="Hybrid Isometric Cutaway" ref={viewerRef}>
     <div className="viewer-toolbar"><div><p className="section-kicker">KHÔNG GIAN XẾP</p><h2>{active?.container.name ?? 'Chưa có phương án'}</h2>{insights && <div className="viewer-metrics" aria-label="Chỉ số xếp hàng"><span>{insights.count} kiện</span><span>Lấp đầy {insights.fillPercentage.toFixed(1)}%</span>{insights.floorOnlyCount > 0 && <span className="floor-only-metric">{insights.floorOnlyCount} kiện nằm sàn</span>}</div>}</div><div className="view-toggle" role="group" aria-label="Chế độ xem"><button type="button" aria-pressed={mode === '3d'} className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}><Box size={15} aria-hidden="true" />3D</button><button type="button" aria-pressed={mode === '2d'} className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}><Map size={15} aria-hidden="true" />Mặt bằng</button></div></div>
-    {metrics && <ViewerControls mode={renderMode} shell={shell} preset={preset} metrics={metrics} selected={selected} leftovers={leftovers} observationDisabled={manualEditing} onModeChange={(nextMode) => { if (!manualEditing) setRenderMode(nextMode); }} onShellChange={setShell} onPresetChange={selectPreset} onFit={() => onRequestFocus('fit')} />}
+    {active && metrics && <ViewerControls mode={renderMode} shell={shell} preset={preset} metrics={metrics} selected={selected} leftovers={leftovers} observationDisabled={manualEditing} onModeChange={(nextMode) => { if (!manualEditing) setRenderMode(nextMode); }} onShellChange={setShell} onPresetChange={selectPreset} onFit={() => onRequestFocus('fit')} />}
+    {!active && metrics && <ViewerHud metrics={metrics} selected={null} leftovers={leftovers} />}
     {active && <ViewerManualControls enabled={manualEditing} selectedKey={selectedPlacementId} selected={manualDraft} validation={manualValidation} override={manualOverride} mode={manualMode} axis={manualAxis} snap={manualSnap} onEnabledChange={updateManualEditing} onModeChange={setManualMode} onAxisChange={setManualAxis} onSnapChange={setManualSnap} onDraftChange={updateManualDraft} onOverrideChange={setManualOverride} onApply={applyManualDraft} onCancel={cancelManualDraft} />}
     <div className="simulation-toolbar viewport-layout-controls" role="group" aria-label="Bố cục khung nhìn">
       {([['single', 'Single View'], ['pip', 'PIP'], ['quad', 'Quad View']] as const).map(([layout, label]) => <button key={layout} type="button" aria-pressed={viewportLayout === layout} className={viewportLayout === layout ? 'active' : ''} onClick={() => selectLayout(layout)}>{label}</button>)}

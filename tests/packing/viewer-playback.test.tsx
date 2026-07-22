@@ -35,7 +35,7 @@ describe('ViewerPlayback', () => {
     vi.advanceTimersByTime(324);
     expect(onStep).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(onStep).toHaveBeenCalledWith(2);
+    expect(onStep).toHaveBeenCalledWith(2, 'playback');
     expect(onPlaying).toHaveBeenCalledWith(false);
 
     rerender(<ViewerPlayback {...props} playing={false} />);
@@ -52,9 +52,9 @@ describe('ViewerPlayback', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tiếp' }));
     fireEvent.change(screen.getByRole('slider', { name: 'Tiến trình xếp hàng' }), { target: { value: '9' } });
 
-    expect(onStep).toHaveBeenNthCalledWith(1, 0);
-    expect(onStep).toHaveBeenNthCalledWith(2, 1);
-    expect(onStep).toHaveBeenNthCalledWith(3, 2);
+    expect(onStep).toHaveBeenNthCalledWith(1, 0, 'manual');
+    expect(onStep).toHaveBeenNthCalledWith(2, 1, 'manual');
+    expect(onStep).toHaveBeenNthCalledWith(3, 2, 'manual');
   });
 
   it('announces only the changing playback step politely', () => {

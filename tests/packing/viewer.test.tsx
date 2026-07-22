@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { getCargoFocus, getGlobalPlacementStep, getVisiblePlacementCount, PackingViewer } from '@/components/packing/packing-viewer';
-import type { PackedContainer } from '@/lib/packing/types';
+import type { Leftover, PackedContainer } from '@/lib/packing/types';
 
 const floorOnlyContainer: PackedContainer = {
   container: { id: 'container-1', name: '5T (VN)', width: 2, height: 2, length: 4, maxWeight: 4800 },
@@ -13,6 +13,23 @@ const floorOnlyContainer: PackedContainer = {
 afterEach(cleanup);
 
 describe('PackingViewer', () => {
+  it('shows global progress and every final reason when all cartons are leftovers', () => {
+    const base = { ...floorOnlyContainer.packed[0], stackable: true };
+    const leftovers: Leftover[] = [
+      { ...base, id: 'oversize', label: 'Kiện quá cỡ', order: 1, reason: 'oversize' },
+      { ...base, id: 'overweight', label: 'Kiện quá tải', order: 2, reason: 'overweight' },
+      { ...base, id: 'no-space', label: 'Kiện hết chỗ', order: 3, reason: 'no-space' },
+    ];
+
+    render(<PackingViewer packedContainers={[{ ...floorOnlyContainer, packed: [], unpacked: leftovers }]} leftovers={leftovers} selectedPlacementId={null} onSelectPlacement={() => {}} step={0} />);
+
+    const hud = screen.getByLabelText('Chỉ số mô phỏng');
+    expect(hud).toHaveTextContent('Đã xếp 0 / 3 kiện');
+    expect(hud).toHaveTextContent('Kiện quá cỡ: Quá kích thước');
+    expect(hud).toHaveTextContent('Kiện quá tải: Vượt tải trọng');
+    expect(hud).toHaveTextContent('Kiện hết chỗ: Không còn chỗ phù hợp');
+  });
+
   it('keeps an empty plan distinct from a packed plan', () => {
     render(<PackingViewer packedContainers={[]} selectedPlacementId={null} onSelectPlacement={() => {}} step={0} />);
 

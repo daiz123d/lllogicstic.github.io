@@ -37,7 +37,7 @@ function getPipPresets(mainPreset: ViewPreset, preferred: ViewPreset[] = ['top',
 
 function useCompactViewports() {
   const [layoutElement, setLayoutElement] = useState<HTMLDivElement | null>(null);
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(max-width: 640px)').matches));
 
   useEffect(() => {
     const query = window.matchMedia?.('(max-width: 640px)');

@@ -15,8 +15,9 @@ import type { PlacementOverride } from '@/lib/packing/manual-layout';
 import type { CartonInput, ContainerInput, ContainerSelectionMode, PackingResult, PackingStrategy } from '@/lib/packing/types';
 import { Inspector } from './inspector';
 import { PackingResultTable } from './packing-result-table';
-import { getGlobalPlacementStep, PackingViewer, placementKey } from './packing-viewer';
+import { getGlobalPlacementOwner, getGlobalPlacementStep, PackingViewer, placementKey } from './packing-viewer';
 import { ViewerPlayback } from './viewer-playback';
+import type { PlaybackTransitionDescriptor, PlaybackTransitionSource } from './viewer-types';
 
 const defaultContainers: ContainerInput[] = [{
   id: 'container-1', name: 'Container 1', length: 4, width: 5, height: 3, quantity: 1, maxWeight: 1000,
@@ -63,11 +64,13 @@ export function PackingWorkspace() {
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<.5 | 1 | 2>(1);
+  const [playbackTransition, setPlaybackTransition] = useState<PlaybackTransitionDescriptor | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState({ key: 'fit', nonce: 0 });
   const [placementOverrides, setPlacementOverrides] = useState<Record<string, PlacementOverride>>({});
   const importInputRef = useRef<HTMLInputElement>(null);
+  const playbackTransitionNonce = useRef(0);
   const [importTarget, setImportTarget] = useState<ImportTarget>('cartons');
 
   const invalid = !cartons.every(isValidCarton) || (containerMode === 'manual' && !containers.every(isValidContainer));
@@ -98,12 +101,26 @@ export function PackingWorkspace() {
     setFocusRequest((current) => ({ key: key === 'fit' ? 'fit' : `placement:${key}`, nonce: current.nonce + 1 }));
   }
 
+  function updatePlaybackStep(nextStep: number, source: PlaybackTransitionSource) {
+    const clampedStep = Math.min(placementCount, Math.max(0, nextStep));
+    const owner = getGlobalPlacementOwner(result?.results ?? [], clampedStep);
+    setPlaybackTransition({
+      source,
+      fromStep: step,
+      toStep: clampedStep,
+      ownerContainerId: owner?.containerId ?? null,
+      nonce: ++playbackTransitionNonce.current,
+      issuedAt: performance.now(),
+    });
+    setStep(clampedStep);
+  }
+
   function selectPlacement(placementId: string) {
     const owner = result?.results.find((item) => item.container.id === placementId.slice(0, placementId.lastIndexOf(':')));
     const placementIndex = owner?.packed.findIndex((placement) => placementKey(owner.container.id, placement) === placementId) ?? -1;
     if (owner && placementIndex >= 0) {
       const revealStep = getGlobalPlacementStep(result?.results ?? [], owner.container.id, placementIndex);
-      setStep((current) => Math.max(current, revealStep));
+      if (revealStep > step) updatePlaybackStep(revealStep, 'manual');
     }
     setSelectedPlacementId(placementId);
   }
@@ -159,6 +176,7 @@ export function PackingWorkspace() {
       : packMultipleContainers(containers, cartons, { allowRotation, strategy });
     setResult(nextResult);
     setStep(0);
+    setPlaybackTransition(null);
     setPlaying(false);
     setSelectedPlacementId(null);
     const nextPacked = nextResult.results.reduce((sum, item) => sum + item.packed.length, 0);
@@ -271,8 +289,8 @@ export function PackingWorkspace() {
       <div className="work-grid">
         <section className="simulation-stage">
           <div className="stage-status" role="status" aria-live="polite" aria-atomic="true"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}<span className="stage-context">{result ? `${usedContainerCount} container đang hiển thị` : 'Chờ dữ liệu xếp hàng'}</span></div>
-          <PackingViewer packedContainers={presentationResult?.results ?? []} leftovers={presentationResult?.leftover ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} onApplyPlacementOverride={applyManualOverride} step={step} reducedMotion={reducedMotion} focusToken={focusToken} onRequestFocus={requestFocus} />
-          {result && placementCount > 0 && <><ViewerPlayback step={step} total={placementCount} playing={playing} speed={speed} reducedMotion={reducedMotion} onStepChange={(nextStep) => setStep(Math.min(placementCount, Math.max(0, nextStep)))} onPlayingChange={setPlaying} onSpeedChange={setSpeed} />{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</>}
+          <PackingViewer packedContainers={presentationResult?.results ?? []} leftovers={presentationResult?.leftover ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} onApplyPlacementOverride={applyManualOverride} step={step} playbackTransition={playbackTransition} playbackActive={playing} reducedMotion={reducedMotion} focusToken={focusToken} onRequestFocus={requestFocus} />
+          {result && placementCount > 0 && <><ViewerPlayback step={step} total={placementCount} playing={playing} speed={speed} reducedMotion={reducedMotion} onStepChange={updatePlaybackStep} onPlayingChange={setPlaying} onSpeedChange={setSpeed} />{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</>}
         </section>
         <Inspector containers={containers} cartons={cartons} containerMode={containerMode} sampleContainers={sampleContainers} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onContainerModeChange={updateContainerMode} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={updateStrategy} onAllowRotationChange={updateAllowRotation} onImportClick={chooseImport} />
       </div>

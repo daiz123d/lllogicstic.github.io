@@ -212,6 +212,12 @@ describe('ContainerScene viewer contract', () => {
     render(<StrictMode><ContainerScene
       packedContainer={packedContainer}
       placements={packedContainer.packed}
+      playbackState={{
+        visibleCount: 1,
+        enteringPlacementId: 'container-1:1',
+        nextPlacement: null,
+        transition: { source: 'playback', fromStep: 0, toStep: 1, ownerContainerId: 'container-1', nonce: 1, issuedAt: performance.now() },
+      }}
       selectedPlacementId={null}
       hoveredPlacementId={null}
       preset="iso"
@@ -296,22 +302,22 @@ describe('ContainerScene viewer contract', () => {
       onHoverPlacement: () => {},
       onRequestFocus: () => {},
     };
-    const { container, rerender } = render(<ContainerScene {...baseProps} placements={[]} playbackState={{ visibleCount: 0, enteringPlacementId: null, nextPlacement: fullContainer.packed[0] }} />);
+    const { container, rerender } = render(<ContainerScene {...baseProps} placements={[]} playbackState={{ visibleCount: 0, enteringPlacementId: null, nextPlacement: fullContainer.packed[0], transition: null }} />);
 
     expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', '0,0,0');
 
-    rerender(<ContainerScene {...baseProps} placements={[fullContainer.packed[0]]} playbackState={{ visibleCount: 1, enteringPlacementId: 'container-1:1', nextPlacement: secondPlacement }} />);
+    rerender(<ContainerScene {...baseProps} placements={[fullContainer.packed[0]]} playbackState={{ visibleCount: 1, enteringPlacementId: 'container-1:1', nextPlacement: secondPlacement, transition: { source: 'playback', fromStep: 0, toStep: 1, ownerContainerId: 'container-1', nonce: 1, issuedAt: performance.now() } }} />);
     const afterAnimation = performance.now() + 1_000;
     act(() => callbacks.splice(0).forEach((callback) => callback(afterAnimation)));
     expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', `0,${getDoorOpenAngle(1)},0`);
 
-    rerender(<ContainerScene {...baseProps} placements={fullContainer.packed} playbackState={{ visibleCount: 2, enteringPlacementId: 'container-1:2', nextPlacement: null }} />);
+    rerender(<ContainerScene {...baseProps} placements={fullContainer.packed} playbackState={{ visibleCount: 2, enteringPlacementId: 'container-1:2', nextPlacement: null, transition: { source: 'playback', fromStep: 1, toStep: 2, ownerContainerId: 'container-1', nonce: 2, issuedAt: performance.now() } }} />);
     expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', `0,${getDoorOpenAngle(1)},0`);
 
-    rerender(<ContainerScene {...baseProps} placements={[fullContainer.packed[0]]} playbackState={{ visibleCount: 1, enteringPlacementId: 'container-1:1', nextPlacement: secondPlacement }} />);
+    rerender(<ContainerScene {...baseProps} placements={[fullContainer.packed[0]]} playbackState={{ visibleCount: 1, enteringPlacementId: null, nextPlacement: secondPlacement, transition: { source: 'manual', fromStep: 2, toStep: 1, ownerContainerId: 'container-1', nonce: 3, issuedAt: performance.now() } }} />);
     expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', `0,${getDoorOpenAngle(1)},0`);
 
-    rerender(<ContainerScene {...baseProps} placements={[]} playbackState={{ visibleCount: 0, enteringPlacementId: null, nextPlacement: fullContainer.packed[0] }} />);
+    rerender(<ContainerScene {...baseProps} placements={[]} playbackState={{ visibleCount: 0, enteringPlacementId: null, nextPlacement: fullContainer.packed[0], transition: { source: 'manual', fromStep: 1, toStep: 0, ownerContainerId: null, nonce: 4, issuedAt: performance.now() } }} />);
     expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', '0,0,0');
   });
 
@@ -324,7 +330,7 @@ describe('ContainerScene viewer contract', () => {
     const { container } = render(<ContainerScene
       packedContainer={outlineContainer}
       placements={[selectedPlacement, hoveredPlacement, ordinaryPlacement]}
-      playbackState={{ visibleCount: 3, enteringPlacementId: null, nextPlacement }}
+      playbackState={{ visibleCount: 3, enteringPlacementId: null, nextPlacement, transition: null }}
       selectedPlacementId="container-1:1"
       hoveredPlacementId="container-1:2"
       preset="iso"
@@ -355,7 +361,7 @@ describe('ContainerScene viewer contract', () => {
     const { container } = render(<ContainerScene
       packedContainer={packedContainer}
       placements={packedContainer.packed}
-      playbackState={{ visibleCount: 1, enteringPlacementId: entryKey, nextPlacement: null }}
+      playbackState={{ visibleCount: 1, enteringPlacementId: entryKey, nextPlacement: null, transition: { source: 'playback', fromStep: 0, toStep: 1, ownerContainerId: 'container-1', nonce: 1, issuedAt: performance.now() } }}
       selectedPlacementId={null}
       hoveredPlacementId={null}
       preset="iso"

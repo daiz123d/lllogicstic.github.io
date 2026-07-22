@@ -3,6 +3,8 @@
 import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
 import { useEffect } from 'react';
 
+import type { PlaybackTransitionSource } from './viewer-types';
+
 export const PLAYBACK_MS = 650;
 
 export type ViewerPlaybackProps = {
@@ -11,7 +13,7 @@ export type ViewerPlaybackProps = {
   playing: boolean;
   speed: .5 | 1 | 2;
   reducedMotion?: boolean;
-  onStepChange: (step: number) => void;
+  onStepChange: (step: number, source: PlaybackTransitionSource) => void;
   onPlayingChange: (playing: boolean) => void;
   onSpeedChange: (speed: .5 | 1 | 2) => void;
 };
@@ -33,7 +35,7 @@ export function ViewerPlayback({ step, total, playing, speed, reducedMotion = fa
 
     const timer = window.setTimeout(() => {
       const nextStep = clamp(clampedStep + 1, total);
-      onStepChange(nextStep);
+      onStepChange(nextStep, 'playback');
       if (nextStep >= total) onPlayingChange(false);
     }, PLAYBACK_MS / speed);
 
@@ -47,10 +49,10 @@ export function ViewerPlayback({ step, total, playing, speed, reducedMotion = fa
   return <section className="playback-panel" aria-label="Trình tự xếp hàng" data-reduced-motion={reducedMotion || undefined}>
     <div><p className="section-kicker">PLAYBACK</p><strong aria-live="polite" aria-atomic="true">Bước {clampedStep}/{total}</strong></div>
     <div className="playback-controls">
-      <button type="button" aria-label="Trước" onClick={() => onStepChange(clamp(clampedStep - 1, total))}><SkipBack size={16} aria-hidden="true" />Trước</button>
+      <button type="button" aria-label="Trước" onClick={() => onStepChange(clamp(clampedStep - 1, total), 'manual')}><SkipBack size={16} aria-hidden="true" />Trước</button>
       <button type="button" aria-label={playing ? 'Tạm dừng' : 'Phát'} onClick={togglePlayback} disabled={atEnd && !playing}>{playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}{playing ? 'Tạm dừng' : 'Phát'}</button>
-      <button type="button" aria-label="Tiếp" onClick={() => onStepChange(clamp(clampedStep + 1, total))}><SkipForward size={16} aria-hidden="true" />Tiếp</button>
-      <input aria-label="Tiến trình xếp hàng" type="range" min="0" max={total} value={clampedStep} onChange={(event) => onStepChange(clamp(Number(event.target.value), total))} />
+      <button type="button" aria-label="Tiếp" onClick={() => onStepChange(clamp(clampedStep + 1, total), 'manual')}><SkipForward size={16} aria-hidden="true" />Tiếp</button>
+      <input aria-label="Tiến trình xếp hàng" type="range" min="0" max={total} value={clampedStep} onChange={(event) => onStepChange(clamp(Number(event.target.value), total), 'manual')} />
       {([.5, 1, 2] as const).map((value) => <button key={value} type="button" aria-label={`Tốc độ ${value}×`} aria-pressed={speed === value} className={speed === value ? 'active' : ''} onClick={() => onSpeedChange(value)}>{value}×</button>)}
     </div>
   </section>;

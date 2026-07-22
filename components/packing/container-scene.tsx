@@ -11,7 +11,7 @@ import type { ManualAxis, ManualSnap, ManualTransformMode, PlacementDraft, Place
 import type { PackedContainer, Placement } from '@/lib/packing/types';
 
 import { getCameraFrame, getEmptyRegions, getHeatColor } from './viewer-model';
-import type { EmptyRegion, RenderMode, ShellVisibility, ViewPreset } from './viewer-types';
+import type { EmptyRegion, PlaybackTransitionDescriptor, RenderMode, ShellVisibility, ViewPreset } from './viewer-types';
 
 export type ContainerSceneProps = {
   packedContainer: PackedContainer;
@@ -44,6 +44,7 @@ export type PlaybackVisualState = {
   visibleCount: number;
   enteringPlacementId: string | null;
   nextPlacement: Placement | null;
+  transition: PlaybackTransitionDescriptor | null;
 };
 
 type CameraControllerProps = Pick<ContainerSceneProps, 'preset' | 'focusToken' | 'packedContainer' | 'mode'> & {
@@ -105,40 +106,60 @@ function easeOutCubic(progress: number) {
 
 type EntryAnimation = { progress: number; landing: boolean; active: boolean };
 
-function useEntryAnimation(entryKey: string | undefined, reducedMotion: boolean): EntryAnimation {
-  const [progress, setProgress] = useState(() => entryKey && !reducedMotion ? 0 : 1);
-  const [landing, setLanding] = useState(false);
+const ENTRY_TRAVEL_MS = 450;
+const ENTRY_LANDING_MS = 240;
+const DOOR_OPEN_MS = 350;
+
+function animationNow() {
+  return typeof performance === 'undefined' ? 0 : performance.now();
+}
+
+function getEntryAnimation(entryKey: string | undefined, transition: PlaybackTransitionDescriptor | null, reducedMotion: boolean, now: number): EntryAnimation {
+  if (!entryKey || transition?.source !== 'playback' || reducedMotion) return { progress: 1, landing: false, active: false };
+  const elapsed = Math.max(0, now - transition.issuedAt);
+  if (elapsed < ENTRY_TRAVEL_MS) return { progress: elapsed / ENTRY_TRAVEL_MS, landing: false, active: true };
+  if (elapsed < ENTRY_TRAVEL_MS + ENTRY_LANDING_MS) return { progress: 1, landing: true, active: true };
+  return { progress: 1, landing: false, active: false };
+}
+
+function useEntryAnimation(entryKey: string | undefined, transition: PlaybackTransitionDescriptor | null, reducedMotion: boolean): EntryAnimation {
+  const transitionKey = entryKey && transition?.source === 'playback' ? `${transition.nonce}:${entryKey}` : undefined;
+  const stateKey = `${transitionKey ?? 'idle'}:${reducedMotion ? 'reduced' : 'motion'}`;
+  const initialEntry = getEntryAnimation(entryKey, transition, reducedMotion, animationNow());
+  const [entryState, setEntryState] = useState(() => ({ key: stateKey, value: initialEntry }));
+  const entry = entryState.key === stateKey ? entryState.value : initialEntry;
 
   useEffect(() => {
-    setLanding(false);
-    if (!entryKey || reducedMotion || typeof window === 'undefined' || !window.requestAnimationFrame) {
-      setProgress(1);
-      return;
-    }
-
-    setProgress(0);
-    const startedAt = performance.now();
     let frame = 0;
     let landingTimer: number | undefined;
+    const effectInitialEntry = getEntryAnimation(entryKey, transition, reducedMotion, animationNow());
     const tick = (now: number) => {
-      const nextProgress = Math.min(1, (now - startedAt) / 450);
-      setProgress(nextProgress);
-      if (nextProgress < 1) {
+      const nextEntry = getEntryAnimation(entryKey, transition, reducedMotion, now);
+      setEntryState({ key: stateKey, value: nextEntry });
+      const elapsed = transition ? Math.max(0, now - transition.issuedAt) : Infinity;
+      if (nextEntry.progress < 1) {
         frame = window.requestAnimationFrame(tick);
-        return;
+      } else if (nextEntry.landing) {
+        landingTimer = window.setTimeout(() => setEntryState({ key: stateKey, value: { progress: 1, landing: false, active: false } }), Math.max(0, ENTRY_TRAVEL_MS + ENTRY_LANDING_MS - elapsed));
       }
-      setLanding(true);
-      landingTimer = window.setTimeout(() => setLanding(false), 240);
     };
-    frame = window.requestAnimationFrame(tick);
+    if (!transitionKey || reducedMotion) {
+      setEntryState((current) => current.key === stateKey && current.value.progress === effectInitialEntry.progress && current.value.landing === effectInitialEntry.landing && current.value.active === effectInitialEntry.active ? current : { key: stateKey, value: effectInitialEntry });
+    } else {
+      setEntryState({ key: stateKey, value: effectInitialEntry });
+    }
+    if (transitionKey && !reducedMotion && typeof window !== 'undefined' && window.requestAnimationFrame) {
+      if (effectInitialEntry.progress < 1) frame = window.requestAnimationFrame(tick);
+      else if (effectInitialEntry.landing) landingTimer = window.setTimeout(() => setEntryState({ key: stateKey, value: { progress: 1, landing: false, active: false } }), Math.max(0, ENTRY_TRAVEL_MS + ENTRY_LANDING_MS - (animationNow() - transition!.issuedAt)));
+    }
 
     return () => {
       window.cancelAnimationFrame(frame);
       if (landingTimer !== undefined) window.clearTimeout(landingTimer);
     };
-  }, [entryKey, reducedMotion]);
+  }, [entryKey, reducedMotion, stateKey, transition?.issuedAt, transitionKey]);
 
-  return { progress: reducedMotion ? 1 : progress, landing: reducedMotion ? false : landing, active: Boolean(entryKey) };
+  return entry;
 }
 
 export function getDoorOpenAngle(openProgress: number) {
@@ -158,37 +179,49 @@ export function watchWebglContextLoss(canvas: HTMLCanvasElement, onFailure: () =
   return () => canvas.removeEventListener('webglcontextlost', handleContextLoss);
 }
 
-function useDoorOpenProgress(visibleCount: number, reducedMotion: boolean) {
+function useDoorOpenProgress(containerId: string, playbackState: PlaybackVisualState, reducedMotion: boolean, animateDoor: boolean) {
+  const { enteringPlacementId, transition, visibleCount } = playbackState;
   const shouldOpen = visibleCount > 0;
-  const previouslyOpen = useRef(shouldOpen);
-  const [progress, setProgress] = useState(shouldOpen ? 1 : 0);
+  const timerOpensFirstDoor = visibleCount === 1
+    && Boolean(enteringPlacementId)
+    && transition?.source === 'playback'
+    && transition.ownerContainerId === containerId
+    && animateDoor;
+  const transitionKey = timerOpensFirstDoor ? `${containerId}:${transition!.nonce}` : undefined;
+  const getProgress = () => shouldOpen ? timerOpensFirstDoor && !reducedMotion ? Math.min(1, Math.max(0, (animationNow() - transition!.issuedAt) / DOOR_OPEN_MS)) : 1 : 0;
+  const stateKey = `${transitionKey ?? `${containerId}:${shouldOpen ? 'open' : 'closed'}`}:${reducedMotion ? 'reduced' : 'motion'}`;
+  const initialProgress = getProgress();
+  const [progressState, setProgressState] = useState(() => ({ key: stateKey, value: initialProgress }));
+  const progress = progressState.key === stateKey ? progressState.value : initialProgress;
 
   useEffect(() => {
-    const wasOpen = previouslyOpen.current;
-    previouslyOpen.current = shouldOpen;
+    const effectInitialProgress = getProgress();
+    const setProgressForKey = (value: number) => setProgressState((current) => current.key === stateKey && current.value === value ? current : { key: stateKey, value });
     if (!shouldOpen) {
-      setProgress(0);
+      setProgressForKey(0);
       return;
     }
     if (reducedMotion) {
-      setProgress(1);
+      setProgressForKey(1);
       return;
     }
-    if (wasOpen) return;
+    if (!transitionKey) {
+      setProgressForKey(1);
+      return;
+    }
 
-    setProgress(0);
-    const startedAt = performance.now();
+    setProgressForKey(effectInitialProgress);
     let frame = 0;
     const tick = (now: number) => {
-      const nextProgress = Math.min(1, Math.max(0, (now - startedAt) / 350));
-      setProgress(nextProgress);
+      const nextProgress = Math.min(1, Math.max(0, (now - transition!.issuedAt) / DOOR_OPEN_MS));
+      setProgressState({ key: stateKey, value: nextProgress });
       if (nextProgress < 1) frame = window.requestAnimationFrame(tick);
     };
-    frame = window.requestAnimationFrame(tick);
+    if (effectInitialProgress < 1) frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [reducedMotion, shouldOpen]);
+  }, [reducedMotion, shouldOpen, stateKey, transition?.issuedAt, transitionKey]);
 
-  return reducedMotion ? shouldOpen ? 1 : 0 : progress;
+  return !shouldOpen ? 0 : reducedMotion ? 1 : progress;
 }
 
 function DoorPanels({ width, height, openProgress, mode }: { width: number; height: number; openProgress: number; mode: RenderMode }) {
@@ -305,7 +338,9 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
   const selectedGroup = useRef<Group>(null!);
   const layerLevels = useMemo(() => [...new Set(placements.map((item) => item.y))].sort((a, b) => a - b), [placements]);
   const maximumWeight = useMemo(() => Math.max(Number.EPSILON, ...placements.map((item) => item.weight).filter((weight) => weight > 0)), [placements]);
-  const entryPlacement = placements.find((placement) => placementKey(packedContainer.container.id, placement) === playbackState?.enteringPlacementId) ?? placements.at(-1);
+  const entryPlacement = playbackState?.enteringPlacementId
+    ? placements.find((placement) => placementKey(packedContainer.container.id, placement) === playbackState.enteringPlacementId)
+    : undefined;
   const editablePlacement = placements.find((placement) => placementKey(packedContainer.container.id, placement) === selectedPlacementId);
 
   function updateManualDraft() {
@@ -409,11 +444,12 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
   }, [mode, packedContainer, placements, sharedEmptyRegions]);
   const playbackState: PlaybackVisualState = playbackVisualState ?? {
     visibleCount: placements.length,
-    enteringPlacementId: placements.length ? placementKey(packedContainer.container.id, placements.at(-1)!) : null,
+    enteringPlacementId: null,
     nextPlacement: null,
+    transition: null,
   };
-  const entry = useEntryAnimation(playbackState.enteringPlacementId ?? undefined, reducedMotion);
-  const doorOpenProgress = useDoorOpenProgress(playbackState.visibleCount, reducedMotion);
+  const entry = useEntryAnimation(playbackState.enteringPlacementId ?? undefined, playbackState.transition, reducedMotion);
+  const doorOpenProgress = useDoorOpenProgress(packedContainer.container.id, playbackState, reducedMotion, isFrontDoorVisible(shell));
 
   useEffect(() => () => contextLossCleanup.current?.(), []);
 

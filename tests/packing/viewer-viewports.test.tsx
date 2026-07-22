@@ -1,16 +1,18 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { getPlacementRenderPosition } from '@/components/packing/container-scene';
-import { PackingViewer, SceneErrorBoundary } from '@/components/packing/packing-viewer';
+import { getPlacementEntryRenderPosition, getPlacementRenderPosition } from '@/components/packing/container-scene';
+import { hasWebglSupport, PackingViewer, SceneErrorBoundary } from '@/components/packing/packing-viewer';
+import type { PlaybackTransitionDescriptor } from '@/components/packing/viewer-types';
 import type { PackedContainer } from '@/lib/packing/types';
 
 const modelSpies = vi.hoisted(() => ({
   getEmptyRegions: vi.fn(() => [{ id: 'empty-0', x: 1, y: 0, z: 0, width: 1, height: 2, length: 4 }]),
   getHeatColor: vi.fn((mode: 'weight' | 'height') => mode === 'weight' ? '#ef4444' : '#fb7185'),
 }));
+const canvasSpies = vi.hoisted(() => ({ render: vi.fn(), active: 0, peak: 0 }));
 
 vi.mock('@/components/packing/viewer-model', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/components/packing/viewer-model')>(),
@@ -18,17 +20,28 @@ vi.mock('@/components/packing/viewer-model', async (importOriginal) => ({
   getHeatColor: modelSpies.getHeatColor,
 }));
 
-vi.mock('@react-three/fiber', () => ({
-  Canvas: ({ children, onPointerMissed }: { children: React.ReactNode; onPointerMissed?: () => void }) => <div data-testid="scene-canvas" onClick={onPointerMissed}>{children}</div>,
-  useThree: () => ({
-    camera: { position: { set: vi.fn() }, lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoom: 1 },
-    size: { width: 1200, height: 700 },
-  }),
-}));
+vi.mock('@react-three/fiber', async () => {
+  const { useEffect: useReactEffect } = await import('react');
+  return {
+    Canvas: ({ children, onPointerMissed }: { children: React.ReactNode; onPointerMissed?: () => void }) => {
+      canvasSpies.render();
+      useReactEffect(() => {
+        canvasSpies.active += 1;
+        canvasSpies.peak = Math.max(canvasSpies.peak, canvasSpies.active);
+        return () => { canvasSpies.active -= 1; };
+      }, []);
+      return <div data-testid="scene-canvas" onClick={onPointerMissed}>{children}</div>;
+    },
+    useThree: () => ({
+      camera: { position: { set: vi.fn() }, lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoom: 1 },
+      size: { width: 1200, height: 700 },
+    }),
+  };
+});
 
 vi.mock('@react-three/drei', () => ({
   ContactShadows: () => null,
-  Edges: () => null,
+  Edges: ({ color }: { color: string }) => <i data-edge-color={color} />,
   Html: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   OrbitControls: () => null,
   OrthographicCamera: () => null,
@@ -79,6 +92,11 @@ afterEach(() => {
   cleanup();
   modelSpies.getEmptyRegions.mockClear();
   modelSpies.getHeatColor.mockClear();
+  canvasSpies.render.mockClear();
+  canvasSpies.active = 0;
+  canvasSpies.peak = 0;
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   mockMobile(false);
   setWebglSupport(true);
 });
@@ -113,6 +131,19 @@ describe('WebGL fallback', () => {
     expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalledWith('webgl2');
   });
 
+  it('releases the scratch WebGL probe context immediately', () => {
+    const loseContext = vi.fn();
+    const getExtension = vi.fn(() => ({ loseContext }));
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: vi.fn(() => ({ getExtension })),
+    });
+
+    expect(hasWebglSupport(document)).toBe(true);
+    expect(getExtension).toHaveBeenCalledWith('WEBGL_lose_context');
+    expect(loseContext).toHaveBeenCalledTimes(1);
+  });
+
   it('automatically shows the 2D plan and metrics after an unsupported probe', () => {
     setWebglSupport(false);
 
@@ -127,6 +158,155 @@ describe('WebGL fallback', () => {
 });
 
 describe('ViewerViewports', () => {
+  it('starts in compact mode on a mobile media query without rendering desktop canvases first', () => {
+    mockMobile(true);
+
+    renderViewer();
+
+    expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(1);
+    expect(canvasSpies.peak).toBe(1);
+  });
+
+  it('does not animate or outline a manual step and hides next cargo while paused', () => {
+    const requestAnimationFrame = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const manualTransition = { source: 'manual', fromStep: 0, toStep: 1, ownerContainerId: 'container-1', nonce: 1, issuedAt: performance.now() } satisfies PlaybackTransitionDescriptor;
+
+    const { container } = renderViewer({
+      step: 1,
+      playbackTransition: manualTransition,
+      playbackActive: false,
+    });
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(container.querySelector('[name^="playback-next-"]')).not.toBeInTheDocument();
+    const placementGroup = [...container.querySelectorAll('group')].find((element) => element.getAttribute('name') === 'placement-container-1:1-idle');
+    expect(placementGroup?.querySelector('i')).toHaveAttribute('data-edge-color', '#164e63');
+  });
+
+  it('ignores a non-unit playback descriptor instead of treating a jump as an entry', () => {
+    const requestAnimationFrame = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const jumpTransition = { source: 'playback', fromStep: 0, toStep: 2, ownerContainerId: 'container-1', nonce: 1, issuedAt: performance.now() } satisfies PlaybackTransitionDescriptor;
+
+    const { container } = renderViewer({
+      step: 2,
+      playbackTransition: jumpTransition,
+      playbackActive: false,
+    });
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    const secondPlacement = [...container.querySelectorAll('group')].find((element) => element.getAttribute('name') === 'placement-container-1:2-idle');
+    expect(secondPlacement?.querySelector('i')).toHaveAttribute('data-edge-color', '#164e63');
+  });
+
+  it('rejects a playback descriptor whose owner does not match its global step', () => {
+    const requestAnimationFrame = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const secondContainer: PackedContainer = {
+      ...packedContainer,
+      container: { ...packedContainer.container, id: 'container-2', name: 'Container 2' },
+      packed: [{ ...packedContainer.packed[0], id: 'box-3', order: 1 }],
+    };
+    const wrongOwnerTransition = { source: 'playback', fromStep: 0, toStep: 1, ownerContainerId: 'container-2', nonce: 1, issuedAt: performance.now() } satisfies PlaybackTransitionDescriptor;
+
+    render(<PackingViewer packedContainers={[packedContainer, secondContainer]} selectedPlacementId={null} onSelectPlacement={() => {}} step={1} playbackTransition={wrongOwnerTransition} playbackActive={false} />);
+
+    expect(screen.getByRole('heading', { name: '5T (VN)' })).toBeInTheDocument();
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
+  it('does not replay a completed timer transition after switching layouts', () => {
+    const requestAnimationFrame = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const completedTransition = { source: 'playback', fromStep: 0, toStep: 1, ownerContainerId: 'container-1', nonce: 1, issuedAt: performance.now() - 1_000 } satisfies PlaybackTransitionDescriptor;
+
+    const { container } = renderViewer({
+      step: 1,
+      playbackTransition: completedTransition,
+      playbackActive: false,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Single View' }));
+    fireEvent.click(screen.getByRole('button', { name: 'PIP' }));
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    const placementGroups = [...container.querySelectorAll('group')].filter((element) => element.getAttribute('name') === 'placement-container-1:1-idle');
+    expect(placementGroups).toHaveLength(3);
+    placementGroups.forEach((group) => expect(group.querySelector('i')).toHaveAttribute('data-edge-color', '#164e63'));
+  });
+
+  it('resumes an active timer transition from its issued time after switching layouts', () => {
+    vi.useFakeTimers();
+    const requestAnimationFrame = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const activeTransition = { source: 'playback', fromStep: 0, toStep: 1, ownerContainerId: 'container-1', nonce: 1, issuedAt: -225 } satisfies PlaybackTransitionDescriptor;
+    const target = getPlacementRenderPosition(packedContainer, packedContainer.packed, packedContainer.packed[0], 'solid');
+    const halfwayPosition = getPlacementEntryRenderPosition(packedContainer, packedContainer.packed[0], target, .5).join(',');
+
+    const { container } = renderViewer({
+      step: 1,
+      playbackTransition: activeTransition,
+      playbackActive: false,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Single View' }));
+    fireEvent.click(screen.getByRole('button', { name: 'PIP' }));
+
+    expect(requestAnimationFrame).toHaveBeenCalled();
+    const placementGroups = [...container.querySelectorAll('group')].filter((element) => element.getAttribute('name') === 'placement-container-1:1-idle');
+    expect(placementGroups).toHaveLength(3);
+    placementGroups.forEach((group) => expect(group).toHaveAttribute('position', halfwayPosition));
+  });
+
+  it('switches at a timer-driven container boundary and preserves the final entry while pausing', () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const secondContainer: PackedContainer = {
+      ...packedContainer,
+      container: { ...packedContainer.container, id: 'container-2', name: 'Container 2' },
+      packed: [
+        { ...packedContainer.packed[0], id: 'box-3', label: 'Kiện container hai', order: 1 },
+        { ...packedContainer.packed[1], id: 'box-4', label: 'Kiện tiếp theo', order: 2 },
+      ],
+    };
+    const firstContainer = { ...packedContainer, packed: [packedContainer.packed[0]] };
+    const initialTransition = { source: 'manual', fromStep: 0, toStep: 1, ownerContainerId: 'container-1', nonce: 1, issuedAt: performance.now() } satisfies PlaybackTransitionDescriptor;
+    const boundaryTransition = { source: 'playback', fromStep: 1, toStep: 2, ownerContainerId: 'container-2', nonce: 2, issuedAt: performance.now() + 1_000 } satisfies PlaybackTransitionDescriptor;
+    const finalTransition = { source: 'playback', fromStep: 2, toStep: 3, ownerContainerId: 'container-2', nonce: 3, issuedAt: performance.now() + 1_000 } satisfies PlaybackTransitionDescriptor;
+    const baseProps = { packedContainers: [firstContainer, secondContainer], selectedPlacementId: null, onSelectPlacement: () => {} };
+    const { container, rerender } = render(<PackingViewer {...baseProps} step={1} playbackTransition={initialTransition} playbackActive={false} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Mặt trước' }));
+    callbacks.splice(0);
+
+    rerender(<PackingViewer {...baseProps} step={2} playbackTransition={boundaryTransition} playbackActive />);
+
+    expect(screen.getByRole('heading', { name: 'Container 2' })).toBeInTheDocument();
+    const enteringGroups = [...container.querySelectorAll('group')].filter((element) => element.getAttribute('name') === 'placement-container-2:1-idle');
+    expect(enteringGroups).toHaveLength(3);
+    enteringGroups.forEach((group) => expect(group.querySelector('i')).toHaveAttribute('data-edge-color', '#22d3ee'));
+    expect(container.querySelectorAll('[name="playback-next-container-2:2"]')).toHaveLength(3);
+    expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', '0,0,0');
+    act(() => callbacks.splice(0).forEach((callback) => callback(performance.now() + 2_000)));
+    expect(container.querySelector('[name="front-door-right"]')).not.toHaveAttribute('rotation', '0,0,0');
+
+    rerender(<PackingViewer {...baseProps} step={3} playbackTransition={finalTransition} playbackActive={false} />);
+    const finalEntryGroups = [...container.querySelectorAll('group')].filter((element) => element.getAttribute('name') === 'placement-container-2:2-idle');
+    expect(finalEntryGroups).toHaveLength(3);
+    finalEntryGroups.forEach((group) => expect(group.querySelector('i')).toHaveAttribute('data-edge-color', '#22d3ee'));
+    expect(container.querySelector('[name^="playback-next-"]')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '5T (VN)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quad View' }));
+    expect(screen.getByRole('heading', { name: '5T (VN)' })).toBeInTheDocument();
+  });
+
   it('defaults desktop to PIP and switches to single or Quad View with only enabled canvases mounted', () => {
     renderViewer();
 
