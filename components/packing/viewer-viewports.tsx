@@ -25,6 +25,11 @@ const PRESET_LABELS: Record<ViewPreset, string> = {
   side: 'Mặt bên',
 };
 
+function getPipPresets(mainPreset: ViewPreset, preferred: ViewPreset[] = ['top', 'front']) {
+  const unique = [...new Set([...preferred, 'top', 'front', 'iso', 'side'] as ViewPreset[])];
+  return unique.filter((preset) => preset !== mainPreset).slice(0, 2);
+}
+
 function useMobileViewports() {
   const [mobile, setMobile] = useState(false);
 
@@ -53,20 +58,21 @@ function Viewport({ preset, label, sceneProps, className = '' }: {
 
 export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, onMainPresetChange, onTogglePip }: ViewerViewportsProps) {
   const mobile = useMobileViewports();
-  const [pipPresets, setPipPresets] = useState<ViewPreset[]>(['top', 'front']);
+  const [pipPresets, setPipPresets] = useState<ViewPreset[]>(() => getPipPresets(mainPreset));
   const previousMainPreset = useRef(mainPreset);
+  const visiblePipPresets = getPipPresets(mainPreset, pipPresets);
 
   useEffect(() => {
     const previous = previousMainPreset.current;
     if (previous !== mainPreset) {
-      setPipPresets((current) => current.includes(mainPreset) ? current.map((preset) => preset === mainPreset ? previous : preset) : current);
+      setPipPresets((current) => getPipPresets(mainPreset, [...current.filter((preset) => preset !== mainPreset), previous]));
       previousMainPreset.current = mainPreset;
     }
   }, [mainPreset]);
 
   function activatePip(index: number) {
-    const nextMain = pipPresets[index];
-    setPipPresets((current) => current.map((preset, currentIndex) => currentIndex === index ? mainPreset : preset));
+    const nextMain = visiblePipPresets[index];
+    setPipPresets(visiblePipPresets.map((preset, currentIndex) => currentIndex === index ? mainPreset : preset));
     onMainPresetChange(nextMain);
   }
 
@@ -94,7 +100,7 @@ export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, 
   return <div className="viewport-layout viewport-pip">
     <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport chính`} sceneProps={sceneProps} className="viewport-main" />
     <div className="pip-stack">
-      {pipPresets.map((preset, index) => collapsedPip.includes(preset)
+      {visiblePipPresets.map((preset, index) => collapsedPip.includes(preset)
         ? <button key={`${preset}-${index}`} type="button" className="pip-restore" onClick={() => onTogglePip(preset)}>Mở {PRESET_LABELS[preset]} PIP</button>
         : <section key={`${preset}-${index}`} className="packing-viewport viewport-pip-panel" aria-label={`${PRESET_LABELS[preset]} viewport PIP`}>
             <div className="pip-actions">

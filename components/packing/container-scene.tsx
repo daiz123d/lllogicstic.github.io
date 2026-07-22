@@ -26,7 +26,7 @@ export type ContainerSceneProps = {
   onRequestFocus: (key: string) => void;
 };
 
-type CameraControllerProps = Pick<ContainerSceneProps, 'preset' | 'focusToken' | 'placements' | 'packedContainer'> & {
+type CameraControllerProps = Pick<ContainerSceneProps, 'preset' | 'focusToken' | 'placements' | 'packedContainer' | 'mode'> & {
   activeContainerId: string;
   controls: React.RefObject<OrbitControlsImpl | null>;
 };
@@ -35,7 +35,7 @@ function placementKey(containerId: string, placement: Placement) {
   return `${containerId}:${placement.order}`;
 }
 
-function CameraController({ preset, focusToken, packedContainer, placements, activeContainerId, controls }: CameraControllerProps) {
+function CameraController({ preset, focusToken, packedContainer, placements, mode, activeContainerId, controls }: CameraControllerProps) {
   const { camera, size } = useThree();
   const { width, height, length } = packedContainer.container;
 
@@ -46,11 +46,7 @@ function CameraController({ preset, focusToken, packedContainer, placements, act
       ? placements.find((placement) => placementKey(activeContainerId, placement) === focusKey)
       : undefined;
     const target: [number, number, number] = focusedPlacement
-      ? [
-          focusedPlacement.x + focusedPlacement.width / 2 - width / 2,
-          focusedPlacement.y + focusedPlacement.height / 2,
-          focusedPlacement.z + focusedPlacement.length / 2 - length / 2,
-        ]
+      ? getPlacementRenderPosition(packedContainer, placements, focusedPlacement, mode)
       : [frame.target[0] - width / 2, frame.target[1], frame.target[2] - length / 2];
     const containerTarget: [number, number, number] = [frame.target[0] - width / 2, frame.target[1], frame.target[2] - length / 2];
     const position: [number, number, number] = [
@@ -70,35 +66,46 @@ function CameraController({ preset, focusToken, packedContainer, placements, act
   return null;
 }
 
+type ShellLayer = 'floor' | 'rear' | 'left' | 'right' | 'roof' | 'front';
+
+export function getShellMaterialProps(mode: RenderMode, layer: ShellLayer) {
+  const baseOpacity: Record<ShellLayer, number> = { floor: 1, rear: .42, left: .15, right: .15, roof: .10, front: .15 };
+  const xray = mode === 'xray';
+  return {
+    transparent: layer !== 'floor' || xray,
+    opacity: baseOpacity[layer] * (xray ? .45 : 1),
+    depthWrite: !xray,
+  };
+}
+
 function Shell({ packedContainer, shell, mode }: Pick<ContainerSceneProps, 'packedContainer' | 'shell' | 'mode'>) {
   const { width, height, length } = packedContainer.container;
   const visible = (layer: keyof ShellVisibility) => shell.all && shell[layer];
-  const opacityScale = mode === 'xray' ? .45 : 1;
 
   return <group>
     {shell.all && <mesh position={[0, -.04, 0]} receiveShadow>
       <boxGeometry args={[width, .08, length]} />
-      <meshStandardMaterial color="#123b55" roughness={.9} />
+      <meshStandardMaterial color="#123b55" roughness={.9} {...getShellMaterialProps(mode, 'floor')} />
     </mesh>}
     {shell.all && <mesh position={[0, height / 2, -length / 2]}>
       <boxGeometry args={[width, height, .05]} />
-      <meshStandardMaterial color="#164764" transparent opacity={.42 * opacityScale} roughness={.88} depthWrite={mode !== 'xray'} />
+      <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'rear')} />
     </mesh>}
     {visible('left') && <mesh position={[-width / 2, height / 2, 0]}>
       <boxGeometry args={[.05, height, length]} />
-      <meshStandardMaterial color="#164764" transparent opacity={.15 * opacityScale} roughness={.88} depthWrite={mode !== 'xray'} />
+      <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'left')} />
     </mesh>}
     {visible('right') && <mesh position={[width / 2, height / 2, 0]}>
       <boxGeometry args={[.05, height, length]} />
-      <meshStandardMaterial color="#164764" transparent opacity={.15 * opacityScale} roughness={.88} depthWrite={mode !== 'xray'} />
+      <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'right')} />
     </mesh>}
     {visible('roof') && <mesh position={[0, height, 0]}>
       <boxGeometry args={[width, .05, length]} />
-      <meshStandardMaterial color="#164764" transparent opacity={.10 * opacityScale} roughness={.88} depthWrite={mode !== 'xray'} />
+      <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'roof')} />
     </mesh>}
     {visible('front') && <mesh position={[0, height / 2, length / 2]}>
       <boxGeometry args={[width, height, .05]} />
-      <meshStandardMaterial color="#164764" transparent opacity={.15 * opacityScale} roughness={.88} depthWrite={mode !== 'xray'} />
+      <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'front')} />
     </mesh>}
     {shell.all && <mesh position={[0, height / 2, 0]}>
       <boxGeometry args={[width, height, length]} />
@@ -123,7 +130,7 @@ export function getPlacementRenderPosition(packedContainer: PackedContainer, pla
 
 export function getPlacementRenderColor(packedContainer: PackedContainer, placements: Placement[], placement: Placement, mode: RenderMode, maximumWeight?: number) {
   if (mode === 'weight') {
-    const maxWeight = maximumWeight ?? Math.max(1, ...placements.map((item) => item.weight));
+    const maxWeight = maximumWeight && maximumWeight > 0 ? maximumWeight : Math.max(Number.EPSILON, ...placements.map((item) => item.weight).filter((weight) => weight > 0));
     return getHeatColor('weight', placement.weight / maxWeight);
   }
   if (mode === 'height') {
@@ -137,7 +144,7 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
   const xray = mode === 'xray';
   const wireframe = mode === 'wireframe';
   const layerLevels = useMemo(() => [...new Set(placements.map((item) => item.y))].sort((a, b) => a - b), [placements]);
-  const maximumWeight = useMemo(() => Math.max(1, ...placements.map((item) => item.weight)), [placements]);
+  const maximumWeight = useMemo(() => Math.max(Number.EPSILON, ...placements.map((item) => item.weight).filter((weight) => weight > 0)), [placements]);
 
   return <group>
     {placements.map((placement) => {
@@ -208,7 +215,7 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
     <Canvas shadows dpr={[1, 2]}>
       <color attach="background" args={['#07131f']} />
       <OrthographicCamera makeDefault />
-      <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} placements={placements} activeContainerId={packedContainer.container.id} controls={controls} />
+      <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} placements={placements} mode={mode} activeContainerId={packedContainer.container.id} controls={controls} />
       <hemisphereLight intensity={1.1} color="#d9f7ff" groundColor="#10283d" />
       <directionalLight castShadow intensity={1.8} position={[width, height * 2 + 3, length]} />
       <Shell packedContainer={packedContainer} shell={shell} mode={mode} />

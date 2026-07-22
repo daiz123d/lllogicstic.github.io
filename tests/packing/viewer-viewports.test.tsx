@@ -62,8 +62,16 @@ function mockMobile(matches: boolean) {
   });
 }
 
+function setWebglSupport(supported: boolean) {
+  if (supported) {
+    Object.defineProperty(window, 'WebGLRenderingContext', { configurable: true, value: class WebGLRenderingContext {} });
+  } else {
+    Reflect.deleteProperty(window, 'WebGLRenderingContext');
+  }
+}
+
 beforeAll(() => {
-  Object.defineProperty(window, 'WebGLRenderingContext', { configurable: true, value: class WebGLRenderingContext {} });
+  setWebglSupport(true);
 });
 
 afterEach(() => {
@@ -71,6 +79,7 @@ afterEach(() => {
   modelSpies.getEmptyRegions.mockClear();
   modelSpies.getHeatColor.mockClear();
   mockMobile(false);
+  setWebglSupport(true);
 });
 
 describe('ViewerViewports', () => {
@@ -109,6 +118,23 @@ describe('ViewerViewports', () => {
 
     expect(screen.getByLabelText('Mặt trên viewport chính')).toBeInTheDocument();
     expect(screen.getByLabelText('Isometric viewport PIP')).toBeInTheDocument();
+  });
+
+  it.each([['Mặt trên', 'Mặt trước'], ['Mặt trước', 'Mặt trên']] as const)('reconciles PIP presets after a %s main viewport remount and still swaps them', (mainLabel, otherLabel) => {
+    renderViewer();
+    fireEvent.click(screen.getByRole('button', { name: mainLabel }));
+    fireEvent.click(screen.getByRole('button', { name: /^mặt bằng$/i }));
+    fireEvent.click(screen.getByRole('button', { name: '3D' }));
+    fireEvent.click(screen.getByRole('button', { name: 'PIP' }));
+
+    expect(screen.getByLabelText(`${mainLabel} viewport chính`)).toBeInTheDocument();
+    expect(screen.queryByLabelText(`${mainLabel} viewport PIP`)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Isometric viewport PIP')).toBeInTheDocument();
+    expect(screen.getByLabelText(`${otherLabel} viewport PIP`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dùng Isometric làm khung chính' }));
+    expect(screen.getByLabelText('Isometric viewport chính')).toBeInTheDocument();
+    expect(screen.getByLabelText(`${mainLabel} viewport PIP`)).toBeInTheDocument();
   });
 
   it('shares selection across all Quad View scenes', () => {
@@ -162,6 +188,24 @@ describe('observation modes', () => {
 
     expect(modelSpies.getEmptyRegions).toHaveBeenCalledTimes(1);
     expect(container.querySelectorAll('[name="empty-region-empty-0"]')).toHaveLength(4);
+  });
+
+  it('does not compute Space geometry while the 2D plan is active', () => {
+    renderViewer();
+    fireEvent.click(screen.getByRole('button', { name: /^mặt bằng$/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Khoảng trống' }));
+
+    expect(modelSpies.getEmptyRegions).not.toHaveBeenCalled();
+  });
+
+  it('does not compute Space geometry without WebGL support', () => {
+    setWebglSupport(false);
+    renderViewer();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Khoảng trống' }));
+
+    expect(modelSpies.getEmptyRegions).not.toHaveBeenCalled();
   });
 
   it('uses heat colors without changing source placement colors', () => {

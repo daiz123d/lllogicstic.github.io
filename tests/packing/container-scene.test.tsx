@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ContainerScene } from '@/components/packing/container-scene';
+import { ContainerScene, getPlacementRenderColor, getShellMaterialProps } from '@/components/packing/container-scene';
 import { PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
@@ -35,7 +35,10 @@ function renderViewer({ packedContainers = [packedContainer], step = 1 }: Partia
   return render(<PackingViewer packedContainers={packedContainers} selectedPlacementId={null} onSelectPlacement={() => {}} step={step} />);
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  threeSpies.lookAt.mockClear();
+});
 
 describe('ContainerScene viewer contract', () => {
   it('keeps fit and preset controls available in the WebGL fallback', () => {
@@ -94,5 +97,43 @@ describe('ContainerScene viewer contract', () => {
     rerender(<ContainerScene packedContainer={sameSizedContainer} placements={sameSizedContainer.packed} {...sceneProps} />);
 
     expect(threeSpies.positionSet).toHaveBeenCalled();
+  });
+
+  it('focuses an exploded placement at its displayed Y offset only when focus changes', () => {
+    const upperPlacement = { ...packedContainer.packed[0], id: 'box-2', order: 2, y: 1 };
+    const stackedContainer = { ...packedContainer, packed: [packedContainer.packed[0], upperPlacement] };
+    const sceneProps = {
+      placements: stackedContainer.packed,
+      selectedPlacementId: null,
+      hoveredPlacementId: null,
+      preset: 'iso' as const,
+      shell: { all: true, left: true, right: true, roof: true, front: false },
+      onSelectPlacement: () => {},
+      onHoverPlacement: () => {},
+      onRequestFocus: () => {},
+    };
+    const { rerender } = render(<ContainerScene packedContainer={stackedContainer} {...sceneProps} mode="solid" focusToken="fit:0" />);
+
+    threeSpies.lookAt.mockClear();
+    rerender(<ContainerScene packedContainer={stackedContainer} {...sceneProps} mode="exploded" focusToken="placement:container-1:2:1" />);
+
+    expect(threeSpies.lookAt).toHaveBeenLastCalledWith(-.5, 1.78, -1.5);
+
+    threeSpies.lookAt.mockClear();
+    rerender(<ContainerScene packedContainer={stackedContainer} {...sceneProps} mode="solid" focusToken="placement:container-1:2:1" />);
+    expect(threeSpies.lookAt).not.toHaveBeenCalled();
+  });
+
+  it('uses transparent non-depth-writing material props for the X-Ray floor', () => {
+    expect(getShellMaterialProps('xray', 'floor')).toMatchObject({ transparent: true, opacity: .45, depthWrite: false });
+  });
+
+  it('normalizes sub-kilogram weight heat by the actual positive maximum', () => {
+    const lightweightPlacements = [
+      { ...packedContainer.packed[0], weight: .25 },
+      { ...packedContainer.packed[0], id: 'box-2', order: 2, weight: .5 },
+    ];
+
+    expect(getPlacementRenderColor(packedContainer, lightweightPlacements, lightweightPlacements[1], 'weight')).toBe('#ef4444');
   });
 });

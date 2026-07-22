@@ -7,6 +7,7 @@ type ContainerBounds = Pick<PackedContainer['container'], 'width' | 'height' | '
 const COVERAGE = .75;
 const ELEVATION = 32;
 const MAX_EMPTY_CELLS = 18_000;
+const MAX_EMPTY_REGIONS = 256;
 
 export function getCameraFrame(bounds: ContainerBounds, preset: ViewPreset, viewportWidth: number, viewportHeight: number): CameraFrame {
   const target: [number, number, number] = [bounds.width / 2, bounds.height / 2, bounds.length / 2];
@@ -91,6 +92,7 @@ export function getEmptyRegions(container: PackedContainer, enabled: boolean): E
       height: Math.min(height, yEnd * cellSize) - y * cellSize,
       length: Math.min(length, zEnd * cellSize) - z * cellSize,
     });
+    if (regions.length === MAX_EMPTY_REGIONS) return regions;
   }
   return regions;
 }

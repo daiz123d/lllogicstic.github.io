@@ -89,9 +89,9 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   const metrics = active ? getViewerMetrics(active, step) : null;
   const selected = active ? visiblePlacements.find((placement) => placementKey(active.container.id, placement) === selectedPlacementId) ?? null : null;
   const emptyRegions = useMemo(() => {
-    if (renderMode !== 'space' || !active) return undefined;
+    if (!active || renderMode !== 'space' || mode !== '3d' || !supportsWebgl) return undefined;
     return getEmptyRegions({ ...active, packed: visiblePlacements }, true);
-  }, [active, renderMode, visiblePlacements]);
+  }, [active, mode, renderMode, supportsWebgl, visiblePlacements]);
 
   function enterFullscreen() {
     void viewerRef.current?.requestFullscreen?.();
