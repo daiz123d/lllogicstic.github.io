@@ -1,17 +1,18 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ContainerScene, getPlacementRenderColor, getShellMaterialProps } from '@/components/packing/container-scene';
+import { ContainerScene, getDoorOpenAngle, getPlacementEntryRenderPosition, getPlacementRenderColor, getShellMaterialProps, isFrontDoorVisible } from '@/components/packing/container-scene';
 import { PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
 const dreiSpies = vi.hoisted(() => ({ transformControls: vi.fn(() => null) }));
-const threeSpies = vi.hoisted(() => ({ positionSet: vi.fn(), lookAt: vi.fn(), updateProjectionMatrix: vi.fn() }));
+const threeSpies = vi.hoisted(() => ({ positionSet: vi.fn(), lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoomSet: vi.fn() }));
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="scene-canvas">{children}</div>,
   useThree: () => ({
-    camera: { position: { set: threeSpies.positionSet }, lookAt: threeSpies.lookAt, updateProjectionMatrix: threeSpies.updateProjectionMatrix, zoom: 1 },
+    camera: { position: { set: threeSpies.positionSet }, lookAt: threeSpies.lookAt, updateProjectionMatrix: threeSpies.updateProjectionMatrix, get zoom() { return 1; }, set zoom(value: number) { threeSpies.zoomSet(value); } },
     size: { width: 1200, height: 700 },
   }),
 }));
@@ -38,6 +39,9 @@ function renderViewer({ packedContainers = [packedContainer], step = 1 }: Partia
 afterEach(() => {
   cleanup();
   threeSpies.lookAt.mockClear();
+  threeSpies.positionSet.mockClear();
+  threeSpies.zoomSet.mockClear();
+  vi.unstubAllGlobals();
 });
 
 describe('ContainerScene viewer contract', () => {
@@ -99,6 +103,56 @@ describe('ContainerScene viewer contract', () => {
     expect(threeSpies.positionSet).toHaveBeenCalled();
   });
 
+  it('does not reapply the camera when playback reveals another placement', () => {
+    const secondPlacement = { ...packedContainer.packed[0], id: 'box-2', order: 2, z: 1 };
+    const fullContainer = { ...packedContainer, packed: [packedContainer.packed[0], secondPlacement] };
+    const sceneProps = {
+      selectedPlacementId: null,
+      hoveredPlacementId: null,
+      preset: 'iso' as const,
+      mode: 'solid' as const,
+      shell: { all: true, left: true, right: true, roof: true, front: false },
+      focusToken: 'fit:0',
+      onSelectPlacement: () => {},
+      onHoverPlacement: () => {},
+      onRequestFocus: () => {},
+    };
+    const { rerender } = render(<ContainerScene packedContainer={fullContainer} placements={[fullContainer.packed[0]]} {...sceneProps} />);
+
+    threeSpies.positionSet.mockClear();
+    threeSpies.lookAt.mockClear();
+    threeSpies.zoomSet.mockClear();
+    rerender(<ContainerScene packedContainer={fullContainer} placements={fullContainer.packed} {...sceneProps} />);
+
+    expect(threeSpies.positionSet).not.toHaveBeenCalled();
+    expect(threeSpies.lookAt).not.toHaveBeenCalled();
+    expect(threeSpies.zoomSet).not.toHaveBeenCalled();
+  });
+
+  it('reschedules the entry animation after Strict Mode restarts an effect', () => {
+    const requestAnimationFrame = vi.fn(() => 1);
+    const cancelAnimationFrame = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', cancelAnimationFrame);
+
+    render(<StrictMode><ContainerScene
+      packedContainer={packedContainer}
+      placements={packedContainer.packed}
+      selectedPlacementId={null}
+      hoveredPlacementId={null}
+      preset="iso"
+      mode="solid"
+      shell={{ all: true, left: true, right: true, roof: true, front: false }}
+      focusToken="fit:0"
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    /></StrictMode>);
+
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
+    expect(cancelAnimationFrame).toHaveBeenCalledTimes(1);
+  });
+
   it('focuses an exploded placement at its displayed Y offset only when focus changes', () => {
     const upperPlacement = { ...packedContainer.packed[0], id: 'box-2', order: 2, y: 1 };
     const stackedContainer = { ...packedContainer, packed: [packedContainer.packed[0], upperPlacement] };
@@ -135,5 +189,38 @@ describe('ContainerScene viewer contract', () => {
     ];
 
     expect(getPlacementRenderColor(packedContainer, lightweightPlacements, lightweightPlacements[1], 'weight')).toBe('#ef4444');
+  });
+
+  it('keeps the landing position and closed doors when motion is reduced or the front layer is off', () => {
+    const target: [number, number, number] = [-.5, .5, -1.5];
+
+    expect(getPlacementEntryRenderPosition(packedContainer, packedContainer.packed[0], target, 1)).toEqual(target);
+    expect(isFrontDoorVisible({ all: true, left: true, right: true, roof: true, front: false })).toBe(false);
+    expect(isFrontDoorVisible({ all: true, left: true, right: true, roof: true, front: true })).toBe(true);
+    expect(getDoorOpenAngle(0)).toBe(0);
+    expect(getDoorOpenAngle(350 / 450)).toBeCloseTo(.82);
+  });
+
+  it('skips entry animation frames when reduced motion is enabled', () => {
+    const requestAnimationFrame = vi.fn(() => 1);
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+    render(<ContainerScene
+      packedContainer={packedContainer}
+      placements={packedContainer.packed}
+      selectedPlacementId={null}
+      hoveredPlacementId={null}
+      preset="iso"
+      mode="solid"
+      shell={{ all: true, left: true, right: true, roof: true, front: true }}
+      focusToken="fit:0"
+      reducedMotion
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    />);
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
   });
 });

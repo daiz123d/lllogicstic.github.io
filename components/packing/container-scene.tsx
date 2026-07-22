@@ -27,7 +27,7 @@ export type ContainerSceneProps = {
   onRequestFocus: (key: string) => void;
 };
 
-type CameraControllerProps = Pick<ContainerSceneProps, 'preset' | 'focusToken' | 'placements' | 'packedContainer' | 'mode'> & {
+type CameraControllerProps = Pick<ContainerSceneProps, 'preset' | 'focusToken' | 'packedContainer' | 'mode'> & {
   activeContainerId: string;
   controls: React.RefObject<OrbitControlsImpl | null>;
 };
@@ -36,18 +36,19 @@ function placementKey(containerId: string, placement: Placement) {
   return `${containerId}:${placement.order}`;
 }
 
-function CameraController({ preset, focusToken, packedContainer, placements, mode, activeContainerId, controls }: CameraControllerProps) {
+function CameraController({ preset, focusToken, packedContainer, mode, activeContainerId, controls }: CameraControllerProps) {
   const { camera, size } = useThree();
   const { width, height, length } = packedContainer.container;
+  const allPlacements = packedContainer.packed;
 
   useEffect(() => {
     const frame = getCameraFrame({ width, height, length }, preset, size.width, size.height);
     const focusKey = focusToken.startsWith('placement:') ? focusToken.slice('placement:'.length, focusToken.lastIndexOf(':')) : null;
     const focusedPlacement = focusKey
-      ? placements.find((placement) => placementKey(activeContainerId, placement) === focusKey)
+      ? allPlacements.find((placement) => placementKey(activeContainerId, placement) === focusKey)
       : undefined;
     const target: [number, number, number] = focusedPlacement
-      ? getPlacementRenderPosition(packedContainer, placements, focusedPlacement, mode)
+      ? getPlacementRenderPosition(packedContainer, allPlacements, focusedPlacement, mode)
       : [frame.target[0] - width / 2, frame.target[1], frame.target[2] - length / 2];
     const containerTarget: [number, number, number] = [frame.target[0] - width / 2, frame.target[1], frame.target[2] - length / 2];
     const position: [number, number, number] = [
@@ -62,7 +63,7 @@ function CameraController({ preset, focusToken, packedContainer, placements, mod
     camera.updateProjectionMatrix();
     controls.current?.target.set(...target);
     controls.current?.update();
-  }, [preset, focusToken, activeContainerId, width, height, length, placements.length, size.width, size.height]);
+  }, [preset, focusToken, activeContainerId, width, height, length, allPlacements, size.width, size.height]);
 
   return null;
 }
@@ -88,11 +89,8 @@ type EntryAnimation = { progress: number; landing: boolean; active: boolean };
 function useEntryAnimation(entryKey: string | undefined, reducedMotion: boolean): EntryAnimation {
   const [progress, setProgress] = useState(() => entryKey && !reducedMotion ? 0 : 1);
   const [landing, setLanding] = useState(false);
-  const previousEntryKey = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (previousEntryKey.current === entryKey) return;
-    previousEntryKey.current = entryKey;
     setLanding(false);
     if (!entryKey || reducedMotion || typeof window === 'undefined' || !window.requestAnimationFrame) {
       setProgress(1);
@@ -124,8 +122,16 @@ function useEntryAnimation(entryKey: string | undefined, reducedMotion: boolean)
   return { progress: reducedMotion ? 1 : progress, landing: reducedMotion ? false : landing, active: Boolean(entryKey) };
 }
 
+export function getDoorOpenAngle(openProgress: number) {
+  return easeOutCubic(Math.min(1, Math.max(0, openProgress) * 450 / 350)) * .82;
+}
+
+export function isFrontDoorVisible(shell: ShellVisibility) {
+  return shell.all && shell.front;
+}
+
 function DoorPanels({ width, height, openProgress, mode }: { width: number; height: number; openProgress: number; mode: RenderMode }) {
-  const angle = easeOutCubic(Math.min(1, openProgress * 450 / 350)) * .82;
+  const angle = getDoorOpenAngle(openProgress);
 
   return <group>
     <group position={[-width / 2, height / 2, 0]} rotation={[0, -angle, 0]}>
@@ -162,7 +168,7 @@ function Shell({ packedContainer, shell, mode, entryProgress }: Pick<ContainerSc
       <boxGeometry args={[width, .05, length]} />
       <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'roof')} />
     </mesh>}
-    {visible('front') && <group position={[0, 0, length / 2]}><DoorPanels width={width} height={height} mode={mode} openProgress={entryProgress} /></group>}
+    {isFrontDoorVisible(shell) && <group position={[0, 0, length / 2]}><DoorPanels width={width} height={height} mode={mode} openProgress={entryProgress} /></group>}
     {shell.all && <mesh position={[0, height / 2, 0]}>
       <boxGeometry args={[width, height, length]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -283,7 +289,7 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
     <Canvas shadows dpr={[1, 2]}>
       <color attach="background" args={['#07131f']} />
       <OrthographicCamera makeDefault />
-      <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} placements={placements} mode={mode} activeContainerId={packedContainer.container.id} controls={controls} />
+      <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} mode={mode} activeContainerId={packedContainer.container.id} controls={controls} />
       <hemisphereLight intensity={1.1} color="#d9f7ff" groundColor="#10283d" />
       <directionalLight castShadow intensity={1.8} position={[width, height * 2 + 3, length]} />
       <Shell packedContainer={packedContainer} shell={shell} mode={mode} entryProgress={entry.active ? entry.progress : 0} />

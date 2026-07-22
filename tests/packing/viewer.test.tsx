@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { getCargoFocus, PackingViewer } from '@/components/packing/packing-viewer';
+import { getCargoFocus, getGlobalPlacementStep, getVisiblePlacementCount, PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
 const floorOnlyContainer: PackedContainer = {
@@ -60,5 +60,31 @@ describe('PackingViewer', () => {
     render(<PackingViewer packedContainers={[floorOnlyContainer, secondContainer]} selectedPlacementId="container-2:2" onSelectPlacement={() => {}} step={1} />);
 
     expect(screen.getByRole('heading', { name: 'Container 2' })).toBeInTheDocument();
+  });
+
+  it('reveals containers in global result order instead of applying the step to every container', () => {
+    const firstContainer: PackedContainer = {
+      ...floorOnlyContainer,
+      container: { ...floorOnlyContainer.container, id: 'container-1', name: 'Container 1' },
+      packed: [{ ...floorOnlyContainer.packed[0], label: 'Kiện đầu', order: 1 }],
+    };
+    const secondContainer: PackedContainer = {
+      ...floorOnlyContainer,
+      container: { ...floorOnlyContainer.container, id: 'container-2', name: 'Container 2' },
+      packed: [{ ...floorOnlyContainer.packed[0], id: 'box-2', label: 'Kiện sau', order: 1 }],
+    };
+    const packedContainers = [firstContainer, secondContainer];
+
+    expect(getVisiblePlacementCount(packedContainers, firstContainer.container.id, 1)).toBe(1);
+    expect(getVisiblePlacementCount(packedContainers, secondContainer.container.id, 1)).toBe(0);
+    expect(getGlobalPlacementStep(packedContainers, secondContainer.container.id, 0)).toBe(2);
+
+    render(<PackingViewer packedContainers={packedContainers} selectedPlacementId={null} onSelectPlacement={() => {}} step={1} />);
+    fireEvent.click(screen.getByRole('button', { name: /^mặt bằng$/i }));
+    expect(screen.getByRole('button', { name: /kiện đầu/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Container 2' }));
+    expect(screen.queryByRole('button', { name: /kiện sau/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Đã xếp 0 \/ 1/i)).toBeInTheDocument();
   });
 });

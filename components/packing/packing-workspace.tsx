@@ -13,7 +13,7 @@ import { parseCartonRows } from '@/lib/packing/import';
 import type { CartonInput, ContainerInput, ContainerSelectionMode, PackingResult, PackingStrategy } from '@/lib/packing/types';
 import { Inspector } from './inspector';
 import { PackingResultTable } from './packing-result-table';
-import { PackingViewer, placementKey } from './packing-viewer';
+import { getGlobalPlacementStep, PackingViewer, placementKey } from './packing-viewer';
 import { ViewerPlayback } from './viewer-playback';
 
 const defaultContainers: ContainerInput[] = [{
@@ -92,8 +92,7 @@ export function PackingWorkspace() {
     const owner = result?.results.find((item) => item.container.id === placementId.slice(0, placementId.lastIndexOf(':')));
     const placementIndex = owner?.packed.findIndex((placement) => placementKey(owner.container.id, placement) === placementId) ?? -1;
     if (owner && placementIndex >= 0) {
-      const placement = owner.packed[placementIndex];
-      const revealStep = placement.order === placementIndex + 1 ? placement.order : placementIndex + 1;
+      const revealStep = getGlobalPlacementStep(result?.results ?? [], owner.container.id, placementIndex);
       setStep((current) => Math.max(current, revealStep));
     }
     setSelectedPlacementId(placementId);

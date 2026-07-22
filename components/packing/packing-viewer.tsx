@@ -25,6 +25,28 @@ export function placementKey(containerId: string, placement: Placement) {
   return `${containerId}:${placement.order}`;
 }
 
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+export function getContainerPlaybackOffset(packedContainers: PackedContainer[], containerId: string) {
+  const containerIndex = packedContainers.findIndex((item) => item.container.id === containerId);
+  if (containerIndex < 0) return 0;
+  return packedContainers.slice(0, containerIndex).reduce((count, item) => count + item.packed.length, 0);
+}
+
+export function getVisiblePlacementCount(packedContainers: PackedContainer[], containerId: string, globalStep: number) {
+  const container = packedContainers.find((item) => item.container.id === containerId);
+  if (!container) return 0;
+  return clamp(globalStep - getContainerPlaybackOffset(packedContainers, containerId), 0, container.packed.length);
+}
+
+export function getGlobalPlacementStep(packedContainers: PackedContainer[], containerId: string, placementIndex: number) {
+  const container = packedContainers.find((item) => item.container.id === containerId);
+  if (!container) return 0;
+  return getContainerPlaybackOffset(packedContainers, containerId) + clamp(placementIndex, 0, Math.max(0, container.packed.length - 1)) + 1;
+}
+
 function getPackingInsights(container: PackedContainer) {
   const count = container.packed.length;
   const packedVolume = container.packed.reduce((total, placement) => total + placement.width * placement.height * placement.length, 0);
@@ -85,9 +107,9 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     if (selectedContainer) setActiveId(selectedContainer.container.id);
   }, [packedContainers, selectedPlacementId]);
   const active = usedContainers.find((item) => item.container.id === activeId) ?? usedContainers[0];
-  const visiblePlacements = useMemo(() => active ? active.packed.slice(0, Math.max(0, step)) : [], [active, step]);
+  const visiblePlacements = useMemo(() => active ? active.packed.slice(0, getVisiblePlacementCount(packedContainers, active.container.id, step)) : [], [active, packedContainers, step]);
   const insights = active ? getPackingInsights(active) : null;
-  const metrics = active ? getViewerMetrics(active, step) : null;
+  const metrics = active ? getViewerMetrics(active, visiblePlacements.length) : null;
   const selected = active ? visiblePlacements.find((placement) => placementKey(active.container.id, placement) === selectedPlacementId) ?? null : null;
   const emptyRegions = useMemo(() => {
     if (!active || renderMode !== 'space' || mode !== '3d' || !supportsWebgl) return undefined;
