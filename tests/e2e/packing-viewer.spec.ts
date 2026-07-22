@@ -22,7 +22,9 @@ async function configureLargeScene(page: import('@playwright/test').Page) {
   await expect(page.getByText('Bước 150/150')).toBeVisible();
 }
 
-type PlaybackTimerStats = { active: number; peakActive: number; scheduled: number; cleared: number; fired: number };
+type PlaybackTimerRecord = { id: number; delay: number; status: 'active' | 'cleared' | 'fired' };
+type PlaybackTimerStats = { active: number; activeTimerIds: number[]; peakActive: number; scheduled: number; cleared: number; fired: number; timers: PlaybackTimerRecord[] };
+type PlaybackTimerBoundary = { stats: PlaybackTimerStats; timer: PlaybackTimerRecord };
 
 async function installPlaybackTimerProbe(page: import('@playwright/test').Page) {
   await page.evaluate(() => {
@@ -35,6 +37,7 @@ async function installPlaybackTimerProbe(page: import('@playwright/test').Page) 
 
     const playbackDelays = new Set([325, 650, 1300]);
     const activePlaybackTimers = new Set<number>();
+    const timerRecords = new Map<number, PlaybackTimerRecord>();
     const nativeSetTimeout = window.setTimeout;
     const nativeClearTimeout = window.clearTimeout;
     let peakActive = 0;
@@ -49,20 +52,37 @@ async function installPlaybackTimerProbe(page: import('@playwright/test').Page) 
 
       let timer = 0;
       const wrappedHandler = function (this: unknown, ...callbackArgs: unknown[]) {
-        if (activePlaybackTimers.delete(timer)) fired += 1;
+        const record = timerRecords.get(timer);
+        if (activePlaybackTimers.delete(timer) && record?.status === 'active') {
+          record.status = 'fired';
+          fired += 1;
+        }
         return Reflect.apply(handler, this, callbackArgs);
       };
       timer = Reflect.apply(nativeSetTimeout, window, [wrappedHandler, timeout, ...args]);
       activePlaybackTimers.add(timer);
+      timerRecords.set(timer, { id: timer, delay: Number(timeout), status: 'active' });
       scheduled += 1;
       peakActive = Math.max(peakActive, activePlaybackTimers.size);
       return timer;
     }) as typeof window.setTimeout;
     window.clearTimeout = ((timer?: number) => {
-      if (typeof timer === 'number' && activePlaybackTimers.delete(timer)) cleared += 1;
+      const record = typeof timer === 'number' ? timerRecords.get(timer) : undefined;
+      if (typeof timer === 'number' && activePlaybackTimers.delete(timer) && record?.status === 'active') {
+        record.status = 'cleared';
+        cleared += 1;
+      }
       return Reflect.apply(nativeClearTimeout, window, [timer]);
     }) as typeof window.clearTimeout;
-    scope.__playbackTimerStats = () => ({ active: activePlaybackTimers.size, peakActive, scheduled, cleared, fired });
+    scope.__playbackTimerStats = () => ({
+      active: activePlaybackTimers.size,
+      activeTimerIds: [...activePlaybackTimers],
+      peakActive,
+      scheduled,
+      cleared,
+      fired,
+      timers: [...timerRecords.values()].map((record) => ({ ...record })),
+    });
     scope.__restorePlaybackTimerProbe = () => {
       window.setTimeout = nativeSetTimeout;
       window.clearTimeout = nativeClearTimeout;
@@ -76,22 +96,51 @@ async function playbackTimerStats(page: import('@playwright/test').Page) {
   return page.evaluate(() => (window as Window & { __playbackTimerStats: () => PlaybackTimerStats }).__playbackTimerStats());
 }
 
-async function waitForActivePlaybackTimer(page: import('@playwright/test').Page) {
-  return page.evaluate(() => new Promise<PlaybackTimerStats>((resolve, reject) => {
+async function waitForActivePlaybackTimer(page: import('@playwright/test').Page, expectedDelay?: number) {
+  return page.evaluate((delay) => new Promise<PlaybackTimerStats>((resolve, reject) => {
     const scope = window as Window & { __playbackTimerStats: () => PlaybackTimerStats };
     const deadline = performance.now() + 5_000;
     const inspect = () => {
       const stats = scope.__playbackTimerStats();
-      if (stats.active === 1) resolve(stats);
+      const activeTimer = stats.timers.find((timer) => timer.id === stats.activeTimerIds[0]);
+      if (stats.active === 1 && (delay === undefined || activeTimer?.delay === delay)) resolve(stats);
       else if (performance.now() >= deadline) reject(new Error(`Playback timer did not become active: ${JSON.stringify(stats)}`));
       else requestAnimationFrame(inspect);
     };
     inspect();
-  }));
+  }), expectedDelay);
 }
 
 async function restorePlaybackTimerProbe(page: import('@playwright/test').Page) {
   await page.evaluate(() => (window as Window & { __restorePlaybackTimerProbe?: () => void }).__restorePlaybackTimerProbe?.());
+}
+
+async function triggerPlaybackCleanupBoundary(page: import('@playwright/test').Page, action: 'pause' | 'reset') {
+  return page.evaluate((boundaryAction) => new Promise<PlaybackTimerBoundary>((resolve, reject) => {
+    const scope = window as Window & { __playbackTimerStats: () => PlaybackTimerStats };
+    const deadline = performance.now() + 5_000;
+    const inspect = () => {
+      const stats = scope.__playbackTimerStats();
+      const timer = stats.timers.find((record) => record.id === stats.activeTimerIds[0]);
+      if (stats.active === 1 && timer?.delay === 1300) {
+        const button = boundaryAction === 'pause'
+          ? document.querySelector<HTMLButtonElement>('button[aria-label="Tạm dừng"]')
+          : [...document.querySelectorAll<HTMLButtonElement>('button')].find((candidate) => candidate.textContent?.trim() === 'Đặt lại');
+        if (!button) {
+          reject(new Error(`Could not find ${boundaryAction} button`));
+          return;
+        }
+        button.click();
+        resolve({ stats, timer });
+      } else if (performance.now() >= deadline) reject(new Error(`Playback cleanup boundary did not become ready: ${JSON.stringify(stats)}`));
+      else requestAnimationFrame(inspect);
+    };
+    inspect();
+  }), action);
+}
+
+function getTimerById(stats: PlaybackTimerStats, timerId: number) {
+  return stats.timers.find((timer) => timer.id === timerId);
 }
 
 test('operates the hybrid cutaway viewer without HUD or PIP overlap', async ({ page }) => {
@@ -263,36 +312,44 @@ test('keeps a 150-placement scene interactive without mounting disabled work', a
   try {
     await page.getByRole('button', { name: 'Tốc độ 0.5×' }).click();
     await page.getByRole('button', { name: 'Phát' }).click();
-    await expect.poll(async () => (await playbackTimerStats(page)).active).toBe(1);
+    await waitForActivePlaybackTimer(page, 1300);
 
     await page.getByRole('button', { name: 'Tốc độ 1×' }).click();
-    await expect.poll(async () => (await playbackTimerStats(page)).active).toBe(1);
+    await waitForActivePlaybackTimer(page, 650);
     await page.getByRole('button', { name: 'Tốc độ 2×' }).click();
-    await expect.poll(async () => (await playbackTimerStats(page)).active).toBe(1);
-    await page.getByRole('slider', { name: 'Tiến trình xếp hàng' }).fill('2');
-    await expect(page.getByText('Bước 5/150')).toBeVisible({ timeout: 5_000 });
-    await expect.poll(async () => (await playbackTimerStats(page)).fired).toBeGreaterThanOrEqual(3);
-    await expect.poll(async () => (await playbackTimerStats(page)).active).toBe(1);
+    await waitForActivePlaybackTimer(page, 325);
+    const playbackSlider = page.getByRole('slider', { name: 'Tiến trình xếp hàng' });
+    await playbackSlider.fill('2');
+    const firedBaseline = (await playbackTimerStats(page)).fired;
+    await expect.poll(async () => (await playbackTimerStats(page)).fired, { timeout: 15_000 }).toBeGreaterThanOrEqual(firedBaseline + 3);
+    await expect.poll(async () => Number(await playbackSlider.inputValue()), { timeout: 15_000 }).toBeGreaterThanOrEqual(5);
 
-    let timerStats = await waitForActivePlaybackTimer(page);
+    await page.getByRole('button', { name: 'Tốc độ 0.5×' }).click();
+    const pauseBoundary = await triggerPlaybackCleanupBoundary(page, 'pause');
+    let timerStats = pauseBoundary.stats;
     expect(timerStats).toMatchObject({ active: 1, peakActive: 1 });
+    const pauseTimer = pauseBoundary.timer;
+    expect(pauseTimer.delay).toBe(1300);
+    expect(pauseTimer.status).toBe('active');
     expect(timerStats.scheduled).toBeGreaterThanOrEqual(7);
     expect(timerStats.cleared).toBeGreaterThanOrEqual(2);
 
-    await page.getByRole('button', { name: 'Tạm dừng' }).click();
-    await expect.poll(async () => (await playbackTimerStats(page)).active).toBe(0);
+    await expect.poll(async () => getTimerById(await playbackTimerStats(page), pauseTimer.id)?.status).toBe('cleared');
     timerStats = await playbackTimerStats(page);
-    expect(timerStats.peakActive).toBe(1);
-    expect(timerStats.cleared).toBeGreaterThanOrEqual(3);
+    expect(timerStats).toMatchObject({ active: 0, peakActive: 1, cleared: pauseBoundary.stats.cleared + 1, fired: pauseBoundary.stats.fired });
+    expect(getTimerById(timerStats, pauseTimer.id)).toMatchObject({ status: 'cleared', delay: 1300 });
 
     await page.getByRole('button', { name: 'Phát' }).click();
-    await expect.poll(async () => (await playbackTimerStats(page)).active).toBe(1);
-    await page.getByRole('button', { name: /..t l.i/i }).click();
+    const resetBoundary = await triggerPlaybackCleanupBoundary(page, 'reset');
+    timerStats = resetBoundary.stats;
+    const resetTimer = resetBoundary.timer;
+    expect(resetTimer.id).not.toBe(pauseTimer.id);
+    expect(resetTimer).toMatchObject({ status: 'active', delay: 1300 });
     await expect(page.getByText(/Bước \d+\/150/)).toHaveCount(0);
-    await expect.poll(async () => (await playbackTimerStats(page)).active).toBe(0);
+    await expect.poll(async () => getTimerById(await playbackTimerStats(page), resetTimer.id)?.status).toBe('cleared');
     timerStats = await playbackTimerStats(page);
-    expect(timerStats.peakActive).toBe(1);
-    expect(timerStats.cleared).toBeGreaterThanOrEqual(4);
+    expect(timerStats).toMatchObject({ active: 0, peakActive: 1, cleared: resetBoundary.stats.cleared + 1, fired: resetBoundary.stats.fired });
+    expect(getTimerById(timerStats, resetTimer.id)).toMatchObject({ status: 'cleared', delay: 1300 });
   } finally {
     await restorePlaybackTimerProbe(page);
   }
