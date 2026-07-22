@@ -93,6 +93,40 @@ export function findBestContainer(boxes, options = {}) {
     };
 }
 
+function findSmallestUsableContainer(boxes, options = {}) {
+    const presets = [...containerPresets].sort((a, b) =>
+        (a.length * a.width * a.height) - (b.length * b.width * b.height)
+    );
+    const packingBoxes = normalizePackingBoxes(boxes);
+    const totalBoxes = countPackingBoxes(packingBoxes);
+
+    for (const container of presets) {
+        const result = packBoxes(
+            container.width,
+            container.height,
+            container.length,
+            packingBoxes,
+            container.maxWeight || 0,
+            options
+        );
+        if (result.packed.length <= 0) continue;
+
+        const unpacked = result.unpacked || [];
+        return {
+            ...container,
+            fitsAll: unpacked.length === 0 && result.packed.length >= totalBoxes,
+            packed: result.packed,
+            unpacked,
+            packedCount: result.packed.length,
+            totalBoxes,
+            totalWeight: result.packed.reduce((sum, box) => sum + (box.weight || 0), 0),
+            leftover: unpacked.length
+        };
+    }
+
+    return null;
+}
+
 // Gom hộp đơn lẻ cùng đặc tính thành quantity
 export function selectBestPresetContainers(boxes, options = {}) {
     let remaining = normalizePackingBoxes(boxes);
@@ -100,10 +134,9 @@ export function selectBestPresetContainers(boxes, options = {}) {
     const maxContainers = Math.max(1, options.maxPresetContainers || countPackingBoxes(remaining));
 
     while (countPackingBoxes(remaining) > 0 && results.length < maxContainers) {
-        const remainingCount = countPackingBoxes(remaining);
-        const best = findBestContainer(remaining, options);
+        const best = findSmallestUsableContainer(remaining, options);
 
-        if (!best || best.packedCount <= 0 || best.leftover >= remainingCount) {
+        if (!best || best.packedCount <= 0) {
             break;
         }
 
@@ -232,6 +265,10 @@ export function validateManualPlacement(container, packedBoxes, candidate) {
 
     if (others.some(box => boxesOverlap(normalized, box))) {
         errors.push('collision');
+    }
+
+    if (normalized.stackable === false && normalized.y > epsilon) {
+        errors.push('non-stackable-floor');
     }
 
     if (!isBoxSupported(normalized, others)) {
@@ -389,6 +426,7 @@ export function packBoxes(containerWidth, containerHeight, containerLength, boxe
     function isSupported(candidate) {
         const epsilon = 1e-9;
         if (candidate.y <= epsilon) return true;
+        if (candidate.stackable === false) return false;
 
         return packed.some(support => (
             support.stackable !== false &&
@@ -407,7 +445,8 @@ export function packBoxes(containerWidth, containerHeight, containerLength, boxe
             z: space.z,
             width: orientation.width,
             height: orientation.height,
-            length: orientation.length
+            length: orientation.length,
+            stackable: orientation.stackable
         };
 
         if (
