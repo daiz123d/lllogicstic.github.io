@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
 
 import { PackingResultTable } from '@/components/packing/packing-result-table';
 import type { PackingResult } from '@/lib/packing/types';
@@ -13,6 +13,8 @@ const result: PackingResult = {
   }],
 };
 
+afterEach(cleanup);
+
 it('selects the matching 3D placement from a result row', () => {
   const onSelectPlacement = vi.fn();
   render(<PackingResultTable result={result} selectedPlacementId={null} onSelectPlacement={onSelectPlacement} />);
@@ -20,4 +22,13 @@ it('selects the matching 3D placement from a result row', () => {
   fireEvent.click(screen.getByRole('button', { name: /kiện a/i }));
 
   expect(onSelectPlacement).toHaveBeenCalledWith('container-1:1');
+});
+
+it('requests focus when a result row is clicked', () => {
+  const onFocusPlacement = vi.fn();
+  render(<PackingResultTable result={result} selectedPlacementId={null} onSelectPlacement={() => {}} onFocusPlacement={onFocusPlacement} />);
+
+  fireEvent.doubleClick(screen.getByRole('button', { name: /kiện a/i }));
+
+  expect(onFocusPlacement).toHaveBeenCalledWith('container-1:1');
 });

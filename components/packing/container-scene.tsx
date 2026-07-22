@@ -39,8 +39,9 @@ function CameraController({ preset, focusToken, packedContainer, placements, con
 
   useEffect(() => {
     const frame = getCameraFrame({ width, height, length }, preset, size.width, size.height);
-    const focusedPlacement = focusToken.startsWith('placement:')
-      ? placements.find((placement) => placementKey(packedContainer.container.id, placement) === focusToken.slice('placement:'.length))
+    const focusKey = focusToken.startsWith('placement:') ? focusToken.slice('placement:'.length, focusToken.lastIndexOf(':')) : null;
+    const focusedPlacement = focusKey
+      ? placements.find((placement) => placementKey(packedContainer.container.id, placement) === focusKey)
       : undefined;
     const target: [number, number, number] = focusedPlacement
       ? [
@@ -114,6 +115,7 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
       const key = placementKey(packedContainer.container.id, placement);
       const selected = selectedPlacementId === key;
       const hovered = hoveredPlacementId === key;
+      const faded = selectedPlacementId !== null && !selected;
       const position: [number, number, number] = [
         placement.x + placement.width / 2 - width / 2,
         placement.y + placement.height / 2,
@@ -134,8 +136,8 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
             color={placement.color || '#22d3ee'}
             roughness={.52}
             metalness={0}
-            transparent={xray}
-            opacity={xray ? .48 : 1}
+            transparent={xray || faded}
+            opacity={xray ? .48 : faded ? .55 : 1}
             wireframe={wireframe}
             emissive={selected ? '#f59e0b' : hovered ? '#67e8f9' : '#000000'}
             emissiveIntensity={selected ? .35 : hovered ? .16 : 0}
@@ -143,6 +145,8 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
           <Edges color={selected ? '#fbbf24' : hovered ? '#a5f3fc' : '#164e63'} lineWidth={1} />
         </mesh>
         {showLabels && <Html center distanceFactor={8}><span className={selected ? 'scene-label selected' : 'scene-label'}>{placement.order}</span></Html>}
+        {hovered && <Html position={[0, placement.height / 2 + .28, 0]} center distanceFactor={8}><span role="tooltip" className="scene-floor-only">{placement.label} · D {placement.length.toFixed(2)} × R {placement.width.toFixed(2)} × C {placement.height.toFixed(2)} · {placement.weight.toFixed(1)} kg</span></Html>}
+        {selected && <Html position={[0, placement.height / 2 + .54, 0]} center distanceFactor={8}><span className="scene-floor-only" aria-label="Thông tin kiện đã chọn">D {placement.length.toFixed(2)} × R {placement.width.toFixed(2)} × C {placement.height.toFixed(2)} · X {placement.x.toFixed(2)} · Y {placement.y.toFixed(2)} · Z {placement.z.toFixed(2)} · ↻ Trục D–R–C</span></Html>}
         {!placement.stackable && <Html position={[0, placement.height / 2 + .22, 0]} center distanceFactor={8}><span className="scene-floor-only">SÀN</span></Html>}
       </group>;
     })}

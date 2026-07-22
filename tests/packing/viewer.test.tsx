@@ -49,4 +49,16 @@ describe('PackingViewer', () => {
     expect(screen.getByText('Lấp đầy 6.3%')).toBeInTheDocument();
     expect(screen.getByText('1 kiện nằm sàn')).toBeInTheDocument();
   });
+
+  it('shows the selected placement container when selection comes from the result table', () => {
+    const secondContainer: PackedContainer = {
+      ...floorOnlyContainer,
+      container: { ...floorOnlyContainer.container, id: 'container-2', name: 'Container 2' },
+      packed: [{ ...floorOnlyContainer.packed[0], order: 2 }],
+    };
+
+    render(<PackingViewer packedContainers={[floorOnlyContainer, secondContainer]} selectedPlacementId="container-2:2" onSelectPlacement={() => {}} step={1} />);
+
+    expect(screen.getByRole('heading', { name: 'Container 2' })).toBeInTheDocument();
+  });
 });

@@ -1,0 +1,56 @@
+'use client';
+
+import { Box } from 'lucide-react';
+
+import type { Leftover, Placement } from '@/lib/packing/types';
+
+import type { RenderMode, ShellVisibility, ViewerMetrics, ViewPreset } from './viewer-types';
+
+export type ViewerControlsProps = {
+  mode: RenderMode;
+  shell: ShellVisibility;
+  preset: ViewPreset;
+  metrics: ViewerMetrics;
+  selected: Placement | null;
+  unpacked: Leftover[];
+  onModeChange: (mode: RenderMode) => void;
+  onShellChange: (next: ShellVisibility) => void;
+  onPresetChange: (preset: ViewPreset) => void;
+  onFit: () => void;
+};
+
+type ViewerHudProps = Pick<ViewerControlsProps, 'metrics' | 'selected' | 'unpacked'>;
+
+function formatWeight(value: number) {
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(value);
+}
+
+export function ViewerHud({ metrics, selected, unpacked }: ViewerHudProps) {
+  return <div className="viewer-metrics" aria-label="Chỉ số mô phỏng">
+    <span>Thể tích {metrics.volumePercent.toFixed(1)}%</span>
+    <span>Tải trọng {formatWeight(metrics.usedWeight)} / {formatWeight(metrics.maxWeight)} kg</span>
+    <span>Đã xếp {metrics.packed} / {metrics.total} kiện</span>
+    <span>Chưa xếp {unpacked.length} kiện</span>
+    {selected && <span aria-label="Tọa độ kiện đã chọn">X {selected.x.toFixed(2)} · Y {selected.y.toFixed(2)} · Z {selected.z.toFixed(2)}</span>}
+  </div>;
+}
+
+export function ViewerControls({ mode, shell, preset, metrics, selected, unpacked, onModeChange, onShellChange, onPresetChange, onFit }: ViewerControlsProps) {
+  const updateShell = (layer: keyof ShellVisibility, checked: boolean) => onShellChange({ ...shell, [layer]: checked });
+
+  return <>
+    <div className="simulation-toolbar" role="toolbar" aria-label="Điều khiển mô phỏng">
+      {([['iso', 'Isometric'], ['top', 'Mặt trên'], ['front', 'Mặt trước'], ['side', 'Mặt bên']] as const).map(([value, label]) => <button type="button" aria-pressed={preset === value} className={preset === value ? 'active' : ''} key={value} onClick={() => onPresetChange(value)}>{label}</button>)}
+      <button type="button" onClick={onFit}>Vừa khung hình</button>
+      {([['solid', 'Đặc'], ['xray', 'Xuyên thấu'], ['wireframe', 'Wireframe']] as const).map(([value, label]) => <button type="button" aria-pressed={mode === value} className={mode === value ? 'active' : ''} key={value} onClick={() => onModeChange(value)}><Box size={15} aria-hidden="true" />{label}</button>)}
+    </div>
+    <fieldset className="simulation-toolbar" aria-label="Lớp vỏ container">
+      <label><input type="checkbox" checked={shell.all} onChange={(event) => updateShell('all', event.target.checked)} />Tất cả vỏ</label>
+      <label><input type="checkbox" checked={shell.left} onChange={(event) => updateShell('left', event.target.checked)} />Thành trái</label>
+      <label><input type="checkbox" checked={shell.right} onChange={(event) => updateShell('right', event.target.checked)} />Thành phải</label>
+      <label><input type="checkbox" checked={shell.roof} onChange={(event) => updateShell('roof', event.target.checked)} />Nóc container</label>
+      <label><input type="checkbox" checked={shell.front} onChange={(event) => updateShell('front', event.target.checked)} />Mặt trước</label>
+    </fieldset>
+    <ViewerHud metrics={metrics} selected={selected} unpacked={unpacked} />
+  </>;
+}
