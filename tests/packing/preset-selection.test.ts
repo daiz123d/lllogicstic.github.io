@@ -2,12 +2,13 @@ import { expect, it } from 'vitest';
 
 import { packWithPresetContainers } from '@/lib/packing/engine';
 
-it('selects the smallest sample container that packs all cartons', () => {
+it('fills the smallest usable sample before adding another container', () => {
   const result = packWithPresetContainers([{
-    id: 'carton-1', label: 'Hộp mẫu', length: 1, width: 1, height: 1, quantity: 4, weight: 1, stackable: true, color: '#22d3ee',
+    id: 'carton-1', label: 'Kiện dài', length: 3, width: 1.5, height: 1.5,
+    quantity: 2, weight: 1, stackable: true, color: '#22d3ee',
   }], { allowRotation: false });
 
-  expect(result.results[0].container).toMatchObject({ id: 'preset-1', name: '2.5T (VN)' });
+  expect(result.results.map((item) => item.container.name)).toEqual(['1.25T (VN)', '1.25T (VN)']);
   expect(result.leftover).toEqual([]);
 });
 

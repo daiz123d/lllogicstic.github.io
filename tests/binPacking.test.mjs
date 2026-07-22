@@ -78,6 +78,17 @@ test('does not place boxes on top of a non-stackable support box', () => {
   assertValidPacking(result, { width: 1, height: 2, length: 1 });
 });
 
+test('does not place a non-stackable box above another carton', () => {
+  const result = packBoxes(1, 2, 1, [
+    { id: 'base', width: 1, height: 1, length: 1, quantity: 1, weight: 1, stackable: true },
+    { id: 'no-stack', width: 1, height: 1, length: 1, quantity: 1, weight: 1, stackable: false },
+  ]);
+
+  assert.equal(result.packed.length, 1);
+  assert.equal(result.unpacked.length, 1);
+  assert.equal(result.unpacked[0].id, 'no-stack');
+});
+
 test('respects container max weight', () => {
   const result = packBoxes(3, 3, 3, [
     { width: 1, height: 1, length: 1, quantity: 3, weight: 4, stackable: true },
