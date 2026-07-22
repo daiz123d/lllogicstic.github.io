@@ -150,14 +150,27 @@ function getTimerById(stats: PlaybackTimerStats, timerId: number) {
 }
 
 test('operates the hybrid cutaway viewer without HUD or PIP overlap', async ({ page }) => {
+  test.setTimeout(60_000);
   await optimize(page);
 
-  await expect(page.locator('.scene-label')).toHaveCount(4);
-  const largestLabel = await page.locator('.scene-label').evaluateAll((labels) => Math.max(...labels.map((label) => {
-    const bounds = label.getBoundingClientRect();
-    return Math.max(bounds.width, bounds.height);
-  })));
-  expect(largestLabel).toBeLessThanOrEqual(32);
+  const playbackSlider = page.getByRole('slider', { name: 'Tiến trình xếp hàng' });
+  const totalSteps = Number(await playbackSlider.getAttribute('max'));
+  expect(totalSteps).toBe(4);
+  await expect.poll(async () => (await page.locator('.viewport-main canvas').boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(400);
+  for (let step = 0; step <= totalSteps; step += 1) {
+    await playbackSlider.fill(String(step));
+    await expect(page.locator('.scene-label')).toHaveCount(step);
+    const mainCanvas = await page.locator('.viewport-main canvas').boundingBox();
+    expect(mainCanvas).not.toBeNull();
+    expect(mainCanvas!.height).toBeGreaterThanOrEqual(400);
+    if (step > 0) {
+      const largestLabel = await page.locator('.scene-label').evaluateAll((labels) => Math.max(...labels.map((label) => {
+        const bounds = label.getBoundingClientRect();
+        return Math.max(bounds.width, bounds.height);
+      })));
+      expect(largestLabel).toBeLessThanOrEqual(32);
+    }
+  }
 
   await page.getByRole('button', { name: 'Vừa khung hình' }).click();
   await expect(page.getByRole('button', { name: 'PIP' })).toHaveAttribute('aria-pressed', 'true');

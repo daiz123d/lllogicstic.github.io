@@ -97,8 +97,8 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 .packing-viewport > .scene-canvas { width: 100%; height: 100%; min-height: inherit; }
 .viewport-single { height: 405px; }
 .viewport-single .packing-viewport { height: 100%; border: 0; }
-.viewport-pip { position: relative; min-height: 440px; padding: 8px; }
-.viewport-main { z-index: 1; width: 100%; min-height: 424px; }
+.viewport-pip { position: relative; height: min(540px, 62vh); min-height: 440px; padding: 8px; }
+.viewport-main { z-index: 1; width: 100%; height: 100%; min-height: 0; }
 .pip-stack { position: absolute; z-index: 3; top: 16px; right: 16px; bottom: 16px; display: grid; width: clamp(150px, 24%, 220px); min-height: 0; grid-template-rows: repeat(2, minmax(0, 1fr)); align-content: stretch; gap: 8px; }
 .viewport-pip-panel { min-height: 0; box-shadow: 0 8px 24px rgba(0, 0, 0, .36); }
 .pip-actions { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
