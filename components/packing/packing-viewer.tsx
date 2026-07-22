@@ -3,11 +3,12 @@
 import { Box, Expand, Map } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { ContainerScene } from '@/components/packing/container-scene';
 import type { PackedContainer, Placement } from '@/lib/packing/types';
 
 import { ViewerControls } from './viewer-controls';
-import { getViewerMetrics } from './viewer-model';
+import { ViewerViewports } from './viewer-viewports';
+import type { ViewportLayout } from './viewer-viewports';
+import { getEmptyRegions, getViewerMetrics } from './viewer-model';
 import type { RenderMode, ShellVisibility, ViewPreset } from './viewer-types';
 
 type ViewerProps = {
@@ -70,6 +71,8 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   const [mode, setMode] = useState<'3d' | '2d'>('3d');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [preset, setPreset] = useState<ViewPreset>('iso');
+  const [viewportLayout, setViewportLayout] = useState<ViewportLayout>('single');
+  const [collapsedPip, setCollapsedPip] = useState<ViewPreset[]>([]);
   const [renderMode, setRenderMode] = useState<RenderMode>('solid');
   const [shell, setShell] = useState<ShellVisibility>({ all: true, left: true, right: true, roof: true, front: false });
   const [hoveredPlacementId, setHoveredPlacementId] = useState<string | null>(null);
@@ -85,20 +88,42 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   const insights = active ? getPackingInsights(active) : null;
   const metrics = active ? getViewerMetrics(active, step) : null;
   const selected = active ? visiblePlacements.find((placement) => placementKey(active.container.id, placement) === selectedPlacementId) ?? null : null;
+  const emptyRegions = useMemo(() => {
+    if (renderMode !== 'space' || !active) return undefined;
+    return getEmptyRegions({ ...active, packed: visiblePlacements }, true);
+  }, [active, renderMode, visiblePlacements]);
 
   function enterFullscreen() {
     void viewerRef.current?.requestFullscreen?.();
   }
 
+  function selectLayout(layout: ViewportLayout) {
+    setMode('3d');
+    setViewportLayout(layout);
+  }
+
+  function selectPreset(nextPreset: ViewPreset) {
+    setMode('3d');
+    setPreset(nextPreset);
+  }
+
+  function togglePip(pipPreset: ViewPreset) {
+    setCollapsedPip((current) => current.includes(pipPreset) ? current.filter((presetName) => presetName !== pipPreset) : [...current, pipPreset]);
+  }
+
   return <section className="viewer-panel" aria-label="Trình xem xếp thùng" ref={viewerRef}>
     <div className="viewer-toolbar"><div><p className="section-kicker">KHÔNG GIAN XẾP</p><h2>{active?.container.name ?? 'Chưa có phương án'}</h2>{insights && <div className="viewer-metrics" aria-label="Chỉ số xếp hàng"><span>{insights.count} kiện</span><span>Lấp đầy {insights.fillPercentage.toFixed(1)}%</span>{insights.floorOnlyCount > 0 && <span className="floor-only-metric">{insights.floorOnlyCount} kiện nằm sàn</span>}</div>}</div><div className="view-toggle" role="group" aria-label="Chế độ xem"><button type="button" aria-pressed={mode === '3d'} className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}><Box size={15} aria-hidden="true" />3D</button><button type="button" aria-pressed={mode === '2d'} className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}><Map size={15} aria-hidden="true" />Mặt bằng</button></div></div>
-    {metrics && <ViewerControls mode={renderMode} shell={shell} preset={preset} metrics={metrics} selected={selected} unpacked={active?.unpacked ?? []} onModeChange={setRenderMode} onShellChange={setShell} onPresetChange={(nextPreset) => { setMode('3d'); setPreset(nextPreset); }} onFit={() => onRequestFocus('fit')} />}
-    <div className="simulation-toolbar"><button type="button" aria-label="Mở toàn màn hình" onClick={enterFullscreen}><Expand size={15} aria-hidden="true" />Toàn màn hình</button></div>
+    {metrics && <ViewerControls mode={renderMode} shell={shell} preset={preset} metrics={metrics} selected={selected} unpacked={active?.unpacked ?? []} onModeChange={setRenderMode} onShellChange={setShell} onPresetChange={selectPreset} onFit={() => onRequestFocus('fit')} />}
+    <div className="simulation-toolbar viewport-layout-controls" role="group" aria-label="Bố cục khung nhìn">
+      {([['single', 'Single View'], ['pip', 'PIP'], ['quad', 'Quad View']] as const).map(([layout, label]) => <button key={layout} type="button" aria-pressed={viewportLayout === layout} className={viewportLayout === layout ? 'active' : ''} onClick={() => selectLayout(layout)}>{label}</button>)}
+      <button type="button" aria-label="Mở toàn màn hình" onClick={enterFullscreen}><Expand size={15} aria-hidden="true" />Toàn màn hình</button>
+    </div>
     {usedContainers.length > 1 && <div className="container-tabs">{usedContainers.map((item) => <button className={item.container.id === active?.container.id ? 'active' : ''} type="button" key={item.container.id} onClick={() => setActiveId(item.container.id)}>{item.container.name}</button>)}</div>}
     {!active && mode === '3d' && <div className="viewer-empty">Xếp hàng để mở mô hình container 3D.</div>}
     {!active && mode === '2d' && <div className="plan-view viewer-empty" aria-label="Sơ đồ xếp 2D">Chưa có kiện nào để hiển thị trên mặt bằng.</div>}
     {active && mode === '2d' && <PlanView container={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} onSelectPlacement={onSelectPlacement} />}
-    {active && mode === '3d' && supportsWebgl && <ContainerScene packedContainer={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} hoveredPlacementId={hoveredPlacementId} preset={preset} mode={renderMode} shell={shell} focusToken={focusToken} onSelectPlacement={onSelectPlacement} onHoverPlacement={setHoveredPlacementId} onRequestFocus={onRequestFocus} />}
+    {active && mode === '3d' && renderMode === 'exploded' && <div className="viewer-observation-warning" role="status">Chế độ quan sát – không phải vị trí thực tế</div>}
+    {active && mode === '3d' && supportsWebgl && <ViewerViewports layout={viewportLayout} mainPreset={preset} collapsedPip={collapsedPip} sceneProps={{ packedContainer: active, placements: visiblePlacements, selectedPlacementId, hoveredPlacementId, mode: renderMode, shell, focusToken, emptyRegions, onSelectPlacement, onHoverPlacement: setHoveredPlacementId, onRequestFocus }} onMainPresetChange={selectPreset} onTogglePip={togglePip} />}
     {active && mode === '3d' && !supportsWebgl && <div className="viewer-empty">Thiết bị này chưa hỗ trợ WebGL. Hãy dùng “Mặt bằng” để xem phương án xếp.</div>}
   </section>;
 }

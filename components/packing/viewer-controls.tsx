@@ -42,7 +42,7 @@ export function ViewerControls({ mode, shell, preset, metrics, selected, unpacke
     <div className="simulation-toolbar" role="toolbar" aria-label="Điều khiển mô phỏng">
       {([['iso', 'Isometric'], ['top', 'Mặt trên'], ['front', 'Mặt trước'], ['side', 'Mặt bên']] as const).map(([value, label]) => <button type="button" aria-pressed={preset === value} className={preset === value ? 'active' : ''} key={value} onClick={() => onPresetChange(value)}>{label}</button>)}
       <button type="button" onClick={onFit}>Vừa khung hình</button>
-      {([['solid', 'Đặc'], ['xray', 'Xuyên thấu'], ['wireframe', 'Wireframe']] as const).map(([value, label]) => <button type="button" aria-pressed={mode === value} className={mode === value ? 'active' : ''} key={value} onClick={() => onModeChange(value)}><Box size={15} aria-hidden="true" />{label}</button>)}
+      {([['solid', 'Solid'], ['xray', 'X-Ray'], ['wireframe', 'Wireframe'], ['weight', 'Tải trọng'], ['height', 'Chiều cao'], ['space', 'Khoảng trống'], ['exploded', 'Exploded View']] as const).map(([value, label]) => <button type="button" aria-pressed={mode === value} className={mode === value ? 'active' : ''} key={value} onClick={() => onModeChange(value)}><Box size={15} aria-hidden="true" />{label}</button>)}
     </div>
     <fieldset className="simulation-toolbar" aria-label="Lớp vỏ container">
       <label><input type="checkbox" checked={shell.all} onChange={(event) => updateShell('all', event.target.checked)} />Tất cả vỏ</label>

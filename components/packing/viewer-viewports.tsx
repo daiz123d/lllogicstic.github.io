@@ -1,0 +1,108 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
+import { ContainerScene } from './container-scene';
+import type { ContainerSceneProps } from './container-scene';
+import type { ViewPreset } from './viewer-types';
+
+export type ViewportLayout = 'single' | 'pip' | 'quad';
+
+export type ViewerViewportsProps = {
+  layout: ViewportLayout;
+  mainPreset: ViewPreset;
+  collapsedPip: ViewPreset[];
+  sceneProps: Omit<ContainerSceneProps, 'preset'>;
+  onMainPresetChange: (preset: ViewPreset) => void;
+  onTogglePip: (preset: ViewPreset) => void;
+};
+
+const PRESETS: ViewPreset[] = ['iso', 'top', 'front', 'side'];
+const PRESET_LABELS: Record<ViewPreset, string> = {
+  iso: 'Isometric',
+  top: 'Mặt trên',
+  front: 'Mặt trước',
+  side: 'Mặt bên',
+};
+
+function useMobileViewports() {
+  const [mobile, setMobile] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia?.('(max-width: 639px)');
+    if (!query) return;
+    const update = () => setMobile(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
+
+  return mobile;
+}
+
+function Viewport({ preset, label, sceneProps, className = '' }: {
+  preset: ViewPreset;
+  label: string;
+  sceneProps: Omit<ContainerSceneProps, 'preset'>;
+  className?: string;
+}) {
+  return <section className={`packing-viewport ${className}`.trim()} aria-label={label}>
+    <ContainerScene {...sceneProps} preset={preset} />
+  </section>;
+}
+
+export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, onMainPresetChange, onTogglePip }: ViewerViewportsProps) {
+  const mobile = useMobileViewports();
+  const [pipPresets, setPipPresets] = useState<ViewPreset[]>(['top', 'front']);
+  const previousMainPreset = useRef(mainPreset);
+
+  useEffect(() => {
+    const previous = previousMainPreset.current;
+    if (previous !== mainPreset) {
+      setPipPresets((current) => current.includes(mainPreset) ? current.map((preset) => preset === mainPreset ? previous : preset) : current);
+      previousMainPreset.current = mainPreset;
+    }
+  }, [mainPreset]);
+
+  function activatePip(index: number) {
+    const nextMain = pipPresets[index];
+    setPipPresets((current) => current.map((preset, currentIndex) => currentIndex === index ? mainPreset : preset));
+    onMainPresetChange(nextMain);
+  }
+
+  if (layout === 'single') {
+    return <div className="viewport-layout viewport-single">
+      <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport`} sceneProps={sceneProps} />
+    </div>;
+  }
+
+  if (mobile) {
+    return <div className="viewport-layout viewport-mobile">
+      <div className="viewport-preset-tabs" role="tablist" aria-label="Góc nhìn camera">
+        {PRESETS.map((preset) => <button key={preset} type="button" role="tab" aria-selected={preset === mainPreset} className={preset === mainPreset ? 'active' : ''} onClick={() => onMainPresetChange(preset)}>{PRESET_LABELS[preset]}</button>)}
+      </div>
+      <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport`} sceneProps={sceneProps} />
+    </div>;
+  }
+
+  if (layout === 'quad') {
+    return <div className="viewport-layout viewport-quad">
+      {PRESETS.map((preset) => <Viewport key={preset} preset={preset} label={`${PRESET_LABELS[preset]} viewport`} sceneProps={{ ...sceneProps, showLabels: preset === mainPreset }} />)}
+    </div>;
+  }
+
+  return <div className="viewport-layout viewport-pip">
+    <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport chính`} sceneProps={sceneProps} className="viewport-main" />
+    <div className="pip-stack">
+      {pipPresets.map((preset, index) => collapsedPip.includes(preset)
+        ? <button key={`${preset}-${index}`} type="button" className="pip-restore" onClick={() => onTogglePip(preset)}>Mở {PRESET_LABELS[preset]} PIP</button>
+        : <section key={`${preset}-${index}`} className="packing-viewport viewport-pip-panel" aria-label={`${PRESET_LABELS[preset]} viewport PIP`}>
+            <div className="pip-actions">
+              <button type="button" onClick={() => activatePip(index)}>Dùng {PRESET_LABELS[preset]} làm khung chính</button>
+              <button type="button" aria-label={`Thu gọn ${PRESET_LABELS[preset]}`} onClick={() => onTogglePip(preset)}>−</button>
+            </div>
+            <ContainerScene {...sceneProps} preset={preset} showLabels={false} />
+          </section>)}
+    </div>
+  </div>;
+}
