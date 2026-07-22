@@ -2,7 +2,7 @@
 
 import { ContactShadows, Edges, Html, OrbitControls, OrthographicCamera } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
 import type { PackedContainer, Placement } from '@/lib/packing/types';
@@ -19,6 +19,7 @@ export type ContainerSceneProps = {
   mode: RenderMode;
   shell: ShellVisibility;
   focusToken: string;
+  reducedMotion?: boolean;
   emptyRegions?: EmptyRegion[];
   showLabels?: boolean;
   onSelectPlacement: (key: string) => void;
@@ -78,7 +79,65 @@ export function getShellMaterialProps(mode: RenderMode, layer: ShellLayer) {
   };
 }
 
-function Shell({ packedContainer, shell, mode }: Pick<ContainerSceneProps, 'packedContainer' | 'shell' | 'mode'>) {
+function easeOutCubic(progress: number) {
+  return 1 - (1 - progress) ** 3;
+}
+
+type EntryAnimation = { progress: number; landing: boolean; active: boolean };
+
+function useEntryAnimation(entryKey: string | undefined, reducedMotion: boolean): EntryAnimation {
+  const [progress, setProgress] = useState(() => entryKey && !reducedMotion ? 0 : 1);
+  const [landing, setLanding] = useState(false);
+  const previousEntryKey = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (previousEntryKey.current === entryKey) return;
+    previousEntryKey.current = entryKey;
+    setLanding(false);
+    if (!entryKey || reducedMotion || typeof window === 'undefined' || !window.requestAnimationFrame) {
+      setProgress(1);
+      return;
+    }
+
+    setProgress(0);
+    const startedAt = performance.now();
+    let frame = 0;
+    let landingTimer: number | undefined;
+    const tick = (now: number) => {
+      const nextProgress = Math.min(1, (now - startedAt) / 450);
+      setProgress(nextProgress);
+      if (nextProgress < 1) {
+        frame = window.requestAnimationFrame(tick);
+        return;
+      }
+      setLanding(true);
+      landingTimer = window.setTimeout(() => setLanding(false), 240);
+    };
+    frame = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (landingTimer !== undefined) window.clearTimeout(landingTimer);
+    };
+  }, [entryKey, reducedMotion]);
+
+  return { progress: reducedMotion ? 1 : progress, landing: reducedMotion ? false : landing, active: Boolean(entryKey) };
+}
+
+function DoorPanels({ width, height, openProgress, mode }: { width: number; height: number; openProgress: number; mode: RenderMode }) {
+  const angle = easeOutCubic(Math.min(1, openProgress * 450 / 350)) * .82;
+
+  return <group>
+    <group position={[-width / 2, height / 2, 0]} rotation={[0, -angle, 0]}>
+      <mesh position={[width / 4, 0, 0]}><boxGeometry args={[width / 2, height, .05]} /><meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'front')} /></mesh>
+    </group>
+    <group position={[width / 2, height / 2, 0]} rotation={[0, angle, 0]}>
+      <mesh position={[-width / 4, 0, 0]}><boxGeometry args={[width / 2, height, .05]} /><meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'front')} /></mesh>
+    </group>
+  </group>;
+}
+
+function Shell({ packedContainer, shell, mode, entryProgress }: Pick<ContainerSceneProps, 'packedContainer' | 'shell' | 'mode'> & { entryProgress: number }) {
   const { width, height, length } = packedContainer.container;
   const visible = (layer: keyof ShellVisibility) => shell.all && shell[layer];
 
@@ -103,10 +162,7 @@ function Shell({ packedContainer, shell, mode }: Pick<ContainerSceneProps, 'pack
       <boxGeometry args={[width, .05, length]} />
       <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'roof')} />
     </mesh>}
-    {visible('front') && <mesh position={[0, height / 2, length / 2]}>
-      <boxGeometry args={[width, height, .05]} />
-      <meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'front')} />
-    </mesh>}
+    {visible('front') && <group position={[0, 0, length / 2]}><DoorPanels width={width} height={height} mode={mode} openProgress={entryProgress} /></group>}
     {shell.all && <mesh position={[0, height / 2, 0]}>
       <boxGeometry args={[width, height, length]} />
       <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -128,6 +184,12 @@ export function getPlacementRenderPosition(packedContainer: PackedContainer, pla
   ];
 }
 
+export function getPlacementEntryRenderPosition(packedContainer: PackedContainer, placement: Placement, target: [number, number, number], progress: number): [number, number, number] {
+  const loadingStartZ = packedContainer.container.length / 2 + placement.length / 2;
+  const easedProgress = easeOutCubic(Math.min(1, Math.max(0, progress)));
+  return [target[0], target[1], loadingStartZ + (target[2] - loadingStartZ) * easedProgress];
+}
+
 export function getPlacementRenderColor(packedContainer: PackedContainer, placements: Placement[], placement: Placement, mode: RenderMode, maximumWeight?: number) {
   if (mode === 'weight') {
     const maxWeight = maximumWeight && maximumWeight > 0 ? maximumWeight : Math.max(Number.EPSILON, ...placements.map((item) => item.weight).filter((weight) => weight > 0));
@@ -140,11 +202,12 @@ export function getPlacementRenderColor(packedContainer: PackedContainer, placem
   return placement.color || '#22d3ee';
 }
 
-function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, mode, showLabels, onSelectPlacement, onHoverPlacement, onRequestFocus }: Omit<ContainerSceneProps, 'preset' | 'shell' | 'focusToken'>) {
+function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, mode, showLabels, entry, onSelectPlacement, onHoverPlacement, onRequestFocus }: Omit<ContainerSceneProps, 'preset' | 'shell' | 'focusToken' | 'reducedMotion'> & { entry: EntryAnimation }) {
   const xray = mode === 'xray';
   const wireframe = mode === 'wireframe';
   const layerLevels = useMemo(() => [...new Set(placements.map((item) => item.y))].sort((a, b) => a - b), [placements]);
   const maximumWeight = useMemo(() => Math.max(Number.EPSILON, ...placements.map((item) => item.weight).filter((weight) => weight > 0)), [placements]);
+  const entryPlacement = placements.at(-1);
 
   return <group>
     {placements.map((placement) => {
@@ -152,8 +215,11 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
       const selected = selectedPlacementId === key;
       const hovered = hoveredPlacementId === key;
       const faded = selectedPlacementId !== null && !selected;
-      const position = getPlacementRenderPosition(packedContainer, placements, placement, mode, layerLevels);
-      const color = getPlacementRenderColor(packedContainer, placements, placement, mode, maximumWeight);
+      const targetPosition = getPlacementRenderPosition(packedContainer, placements, placement, mode, layerLevels);
+      const entering = entryPlacement === placement;
+      const moving = entering && entry.progress < 1;
+      const position = entering ? getPlacementEntryRenderPosition(packedContainer, placement, targetPosition, entry.progress) : targetPosition;
+      const color = moving ? '#22d3ee' : getPlacementRenderColor(packedContainer, placements, placement, mode, maximumWeight);
 
       return <group key={key} name={`placement-${key}-${selected ? 'selected' : 'idle'}`} position={position}>
         <mesh
@@ -173,8 +239,8 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
             opacity={xray ? .34 : faded ? .55 : 1}
             depthWrite={!xray}
             wireframe={wireframe}
-            emissive={selected ? '#f59e0b' : hovered ? '#67e8f9' : '#000000'}
-            emissiveIntensity={selected ? .35 : hovered ? .16 : 0}
+            emissive={selected ? '#f59e0b' : moving || (entering && entry.landing) ? '#22d3ee' : hovered ? '#67e8f9' : '#000000'}
+            emissiveIntensity={selected ? .35 : moving ? .22 : entering && entry.landing ? .48 : hovered ? .16 : 0}
           />
           <Edges color={selected ? '#fbbf24' : hovered ? '#a5f3fc' : '#164e63'} lineWidth={1} />
         </mesh>
@@ -203,13 +269,15 @@ function EmptyRegions({ packedContainer, regions }: { packedContainer: PackedCon
   </group>;
 }
 
-export function ContainerScene({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, preset, mode, shell, focusToken, emptyRegions: sharedEmptyRegions, showLabels = true, onSelectPlacement, onHoverPlacement, onRequestFocus }: ContainerSceneProps) {
+export function ContainerScene({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, preset, mode, shell, focusToken, reducedMotion = false, emptyRegions: sharedEmptyRegions, showLabels = true, onSelectPlacement, onHoverPlacement, onRequestFocus }: ContainerSceneProps) {
   const controls = useRef<OrbitControlsImpl>(null);
   const { width, height, length } = packedContainer.container;
   const emptyRegions = useMemo(() => {
     if (mode !== 'space') return [];
     return sharedEmptyRegions ?? getEmptyRegions({ ...packedContainer, packed: placements }, true);
   }, [mode, packedContainer, placements, sharedEmptyRegions]);
+  const entryPlacement = placements.at(-1);
+  const entry = useEntryAnimation(entryPlacement ? placementKey(packedContainer.container.id, entryPlacement) : undefined, reducedMotion);
 
   return <div className="scene-canvas" onContextMenu={(event) => event.preventDefault()}>
     <Canvas shadows dpr={[1, 2]}>
@@ -218,13 +286,14 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
       <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} placements={placements} mode={mode} activeContainerId={packedContainer.container.id} controls={controls} />
       <hemisphereLight intensity={1.1} color="#d9f7ff" groundColor="#10283d" />
       <directionalLight castShadow intensity={1.8} position={[width, height * 2 + 3, length]} />
-      <Shell packedContainer={packedContainer} shell={shell} mode={mode} />
+      <Shell packedContainer={packedContainer} shell={shell} mode={mode} entryProgress={entry.active ? entry.progress : 0} />
       <Cargo
         packedContainer={packedContainer}
         placements={placements}
         selectedPlacementId={selectedPlacementId}
         hoveredPlacementId={hoveredPlacementId}
         mode={mode}
+        entry={entry}
         showLabels={showLabels}
         onSelectPlacement={onSelectPlacement}
         onHoverPlacement={onHoverPlacement}

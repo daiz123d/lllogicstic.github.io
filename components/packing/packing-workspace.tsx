@@ -1,7 +1,7 @@
 'use client';
 
 import { Download } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { CommandBar } from '@/components/control-center/command-bar';
 import { ControlCenterShell } from '@/components/control-center/control-center-shell';
@@ -14,6 +14,7 @@ import type { CartonInput, ContainerInput, ContainerSelectionMode, PackingResult
 import { Inspector } from './inspector';
 import { PackingResultTable } from './packing-result-table';
 import { PackingViewer, placementKey } from './packing-viewer';
+import { ViewerPlayback } from './viewer-playback';
 
 const defaultContainers: ContainerInput[] = [{
   id: 'container-1', name: 'Container 1', length: 4, width: 5, height: 3, quantity: 1, maxWeight: 1000,
@@ -58,6 +59,9 @@ export function PackingWorkspace() {
   const [result, setResult] = useState<PackingResult | null>(null);
   const [message, setMessage] = useState('Sẵn sàng tạo phương án xếp hàng.');
   const [step, setStep] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<.5 | 1 | 2>(1);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState({ key: 'fit', nonce: 0 });
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +74,15 @@ export function PackingWorkspace() {
   const placementCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
   const selectedPlacement = useMemo(() => result?.results.flatMap((item) => item.packed.map((placement) => ({ placement, containerId: item.container.id }))).find(({ placement, containerId }) => placementKey(containerId, placement) === selectedPlacementId)?.placement ?? null, [result, selectedPlacementId]);
   const focusToken = `${focusRequest.key}:${focusRequest.nonce}`;
+
+  useEffect(() => {
+    const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!query) return;
+    const update = () => setReducedMotion(query.matches);
+    update();
+    query.addEventListener?.('change', update);
+    return () => query.removeEventListener?.('change', update);
+  }, []);
 
   function requestFocus(key: string) {
     setFocusRequest((current) => ({ key: key === 'fit' ? 'fit' : `placement:${key}`, nonce: current.nonce + 1 }));
@@ -98,6 +111,7 @@ export function PackingWorkspace() {
       : container));
     setResult(null);
     setStep(0);
+    setPlaying(false);
   }
 
   function updateCarton(cartonId: string, field: keyof CartonInput, value: string | boolean) {
@@ -106,6 +120,7 @@ export function PackingWorkspace() {
       : carton));
     setResult(null);
     setStep(0);
+    setPlaying(false);
   }
 
   function addContainer() {
@@ -129,7 +144,8 @@ export function PackingWorkspace() {
       ? packWithPresetContainers(cartons, { allowRotation, strategy })
       : packMultipleContainers(containers, cartons, { allowRotation, strategy });
     setResult(nextResult);
-    setStep(nextResult.results.reduce((sum, item) => sum + item.packed.length, 0));
+    setStep(0);
+    setPlaying(false);
     setSelectedPlacementId(null);
     const nextPacked = nextResult.results.reduce((sum, item) => sum + item.packed.length, 0);
     const selectedNames = summarizeSelectedContainers(nextResult.results);
@@ -140,6 +156,7 @@ export function PackingWorkspace() {
     setContainerMode(mode);
     setResult(null);
     setStep(0);
+    setPlaying(false);
     setSelectedPlacementId(null);
     setMessage(mode === 'presets' ? 'Sẵn sàng tự chọn container mẫu theo lượng hàng.' : 'Sẵn sàng dùng container tự nhập.');
   }
@@ -148,12 +165,14 @@ export function PackingWorkspace() {
     setStrategy(nextStrategy);
     setResult(null);
     setStep(0);
+    setPlaying(false);
   }
 
   function updateAllowRotation(value: boolean) {
     setAllowRotation(value);
     setResult(null);
     setStep(0);
+    setPlaying(false);
   }
 
   function resetWorkspace() {
@@ -164,6 +183,7 @@ export function PackingWorkspace() {
     setStrategy('minContainers');
     setResult(null);
     setStep(0);
+    setPlaying(false);
     setSelectedPlacementId(null);
     setMessage('Đã đặt lại dữ liệu điều phối về trạng thái ban đầu.');
   }
@@ -172,12 +192,14 @@ export function PackingWorkspace() {
     setCartons((items) => items.length > 1 ? items.filter((item) => item.id !== cartonId) : items);
     setResult(null);
     setStep(0);
+    setPlaying(false);
   }
 
   function removeContainer(containerId: string) {
     setContainers((items) => items.length > 1 ? items.filter((item) => item.id !== containerId) : items);
     setResult(null);
     setStep(0);
+    setPlaying(false);
   }
 
   function chooseImport(target: ImportTarget) {
@@ -203,6 +225,7 @@ export function PackingWorkspace() {
       }
       setResult(null);
       setStep(0);
+      setPlaying(false);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không thể đọc tệp đã chọn.');
     }
@@ -223,8 +246,8 @@ export function PackingWorkspace() {
       <div className="work-grid">
         <section className="simulation-stage" aria-live="polite">
           <div className="stage-status"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}<span className="stage-context">{result ? `${usedContainerCount} container đang hiển thị` : 'Chờ dữ liệu xếp hàng'}</span></div>
-          <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} step={step} focusToken={focusToken} onRequestFocus={requestFocus} />
-          {result && placementCount > 0 && <section className="playback-panel" aria-label="Trình tự xếp hàng"><div><p className="section-kicker">PLAYBACK</p><strong>Kiện {Math.min(step, placementCount)} / {placementCount}</strong></div><div className="playback-controls"><button type="button" onClick={() => setStep((value) => Math.max(0, value - 1))}>← Trước</button><input aria-label="Tiến trình xếp hàng" type="range" min="0" max={placementCount} value={step} onChange={(event) => setStep(numberValue(event.target.value))} /><button type="button" onClick={() => setStep((value) => Math.min(placementCount, value + 1))}>Tiếp →</button></div>{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</section>}
+          <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} step={step} reducedMotion={reducedMotion} focusToken={focusToken} onRequestFocus={requestFocus} />
+          {result && placementCount > 0 && <><ViewerPlayback step={step} total={placementCount} playing={playing} speed={speed} reducedMotion={reducedMotion} onStepChange={(nextStep) => setStep(Math.min(placementCount, Math.max(0, nextStep)))} onPlayingChange={setPlaying} onSpeedChange={setSpeed} />{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</>}
         </section>
         <Inspector containers={containers} cartons={cartons} containerMode={containerMode} sampleContainers={sampleContainers} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onContainerModeChange={updateContainerMode} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={updateStrategy} onAllowRotationChange={updateAllowRotation} onImportClick={chooseImport} />
       </div>

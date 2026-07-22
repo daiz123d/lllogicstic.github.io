@@ -16,6 +16,7 @@ type ViewerProps = {
   selectedPlacementId: string | null;
   onSelectPlacement: (placementId: string) => void;
   step: number;
+  reducedMotion?: boolean;
   focusToken?: string;
   onRequestFocus?: (key: string) => void;
 };
@@ -67,7 +68,7 @@ function PlanView({ container, placements, selectedPlacementId, onSelectPlacemen
   </div>;
 }
 
-export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, focusToken = 'fit:0', onRequestFocus = () => {} }: ViewerProps) {
+export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, reducedMotion = false, focusToken = 'fit:0', onRequestFocus = () => {} }: ViewerProps) {
   const [mode, setMode] = useState<'3d' | '2d'>('3d');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [preset, setPreset] = useState<ViewPreset>('iso');
@@ -123,7 +124,7 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     {!active && mode === '2d' && <div className="plan-view viewer-empty" aria-label="Sơ đồ xếp 2D">Chưa có kiện nào để hiển thị trên mặt bằng.</div>}
     {active && mode === '2d' && <PlanView container={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} onSelectPlacement={onSelectPlacement} />}
     {active && mode === '3d' && renderMode === 'exploded' && <div className="viewer-observation-warning" role="status">Chế độ quan sát – không phải vị trí thực tế</div>}
-    {active && mode === '3d' && supportsWebgl && <ViewerViewports layout={viewportLayout} mainPreset={preset} collapsedPip={collapsedPip} sceneProps={{ packedContainer: active, placements: visiblePlacements, selectedPlacementId, hoveredPlacementId, mode: renderMode, shell, focusToken, emptyRegions, onSelectPlacement, onHoverPlacement: setHoveredPlacementId, onRequestFocus }} onMainPresetChange={selectPreset} onTogglePip={togglePip} />}
+    {active && mode === '3d' && supportsWebgl && <ViewerViewports layout={viewportLayout} mainPreset={preset} collapsedPip={collapsedPip} sceneProps={{ packedContainer: active, placements: visiblePlacements, selectedPlacementId, hoveredPlacementId, mode: renderMode, shell, focusToken, reducedMotion, emptyRegions, onSelectPlacement, onHoverPlacement: setHoveredPlacementId, onRequestFocus }} onMainPresetChange={selectPreset} onTogglePip={togglePip} />}
     {active && mode === '3d' && !supportsWebgl && <div className="viewer-empty">Thiết bị này chưa hỗ trợ WebGL. Hãy dùng “Mặt bằng” để xem phương án xếp.</div>}
   </section>;
 }

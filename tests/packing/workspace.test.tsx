@@ -29,7 +29,7 @@ describe('PackingWorkspace', () => {
     fireEvent.change(screen.getByLabelText(/tiến trình xếp hàng/i), { target: { value: '1' } });
     fireEvent.click(within(screen.getAllByRole('row').at(-1)!).getByRole('button', { name: /hộp mẫu/i }));
 
-    expect(screen.getByText(/kiện 4 \/ 4/i)).toBeInTheDocument();
+    expect(screen.getByText(/bước 4\/4/i)).toBeInTheDocument();
     expect(screen.getByText(/đang chọn:/i)).toBeInTheDocument();
   });
 });
