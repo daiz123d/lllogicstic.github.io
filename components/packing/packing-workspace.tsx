@@ -10,6 +10,8 @@ import { parseContainerRows } from '@/lib/packing/container-import';
 import { packMultipleContainers, packWithPresetContainers, sampleContainers } from '@/lib/packing/engine';
 import { downloadPackingWorkbook, readRowsFromFile } from '@/lib/packing/file-io';
 import { parseCartonRows } from '@/lib/packing/import';
+import { applyPlacementOverride } from '@/lib/packing/manual-layout';
+import type { PlacementOverride } from '@/lib/packing/manual-layout';
 import type { CartonInput, ContainerInput, ContainerSelectionMode, PackingResult, PackingStrategy } from '@/lib/packing/types';
 import { Inspector } from './inspector';
 import { PackingResultTable } from './packing-result-table';
@@ -64,15 +66,23 @@ export function PackingWorkspace() {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState({ key: 'fit', nonce: 0 });
+  const [placementOverrides, setPlacementOverrides] = useState<Record<string, PlacementOverride>>({});
   const importInputRef = useRef<HTMLInputElement>(null);
   const [importTarget, setImportTarget] = useState<ImportTarget>('cartons');
 
   const invalid = !cartons.every(isValidCarton) || (containerMode === 'manual' && !containers.every(isValidContainer));
+  const presentationResult = useMemo<PackingResult | null>(() => result ? {
+    ...result,
+    results: result.results.map((packedContainer) => Object.entries(placementOverrides).reduce(
+      (current, [key, override]) => key.startsWith(`${packedContainer.container.id}:`) ? applyPlacementOverride(current, key, override) : current,
+      packedContainer,
+    )),
+  } : null, [placementOverrides, result]);
   const packedCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
   const totalCount = useMemo(() => cartons.reduce((sum, carton) => sum + carton.quantity, 0), [cartons]);
   const usedContainerCount = useMemo(() => result?.results.filter((item) => item.packed.length > 0).length ?? 0, [result]);
   const placementCount = useMemo(() => result?.results.reduce((sum, item) => sum + item.packed.length, 0) ?? 0, [result]);
-  const selectedPlacement = useMemo(() => result?.results.flatMap((item) => item.packed.map((placement) => ({ placement, containerId: item.container.id }))).find(({ placement, containerId }) => placementKey(containerId, placement) === selectedPlacementId)?.placement ?? null, [result, selectedPlacementId]);
+  const selectedPlacement = useMemo(() => presentationResult?.results.flatMap((item) => item.packed.map((placement) => ({ placement, containerId: item.container.id }))).find(({ placement, containerId }) => placementKey(containerId, placement) === selectedPlacementId)?.placement ?? null, [presentationResult, selectedPlacementId]);
   const focusToken = `${focusRequest.key}:${focusRequest.nonce}`;
 
   useEffect(() => {
@@ -105,6 +115,7 @@ export function PackingWorkspace() {
   ], [containerMode, containers, packedCount, placementCount, result, totalCount]);
 
   function updateContainer(containerId: string, field: keyof ContainerInput, value: string) {
+    setPlacementOverrides({});
     setContainers((items) => items.map((container) => container.id === containerId
       ? { ...container, [field]: field === 'name' ? value : numberValue(value) }
       : container));
@@ -114,6 +125,7 @@ export function PackingWorkspace() {
   }
 
   function updateCarton(cartonId: string, field: keyof CartonInput, value: string | boolean) {
+    setPlacementOverrides({});
     setCartons((items) => items.map((carton) => carton.id === cartonId
       ? { ...carton, [field]: typeof value === 'boolean' ? value : ['label', 'color'].includes(field) ? value : numberValue(value) }
       : carton));
@@ -123,18 +135,21 @@ export function PackingWorkspace() {
   }
 
   function addContainer() {
+    setPlacementOverrides({});
     setContainers((items) => [...items, { ...defaultContainers[0], id: id('container'), name: `Container ${items.length + 1}` }]);
     setResult(null);
     setStep(0);
   }
 
   function addCarton() {
+    setPlacementOverrides({});
     setCartons((items) => [...items, { ...defaultCartons[0], id: id('carton'), label: `Hộp ${items.length + 1}`, color: '#a78bfa' }]);
     setResult(null);
     setStep(0);
   }
 
   function runPacking() {
+    setPlacementOverrides({});
     if (invalid) {
       setMessage('Kiểm tra lại kích thước, số lượng và tải trọng. Các giá trị phải hợp lệ.');
       return;
@@ -152,6 +167,7 @@ export function PackingWorkspace() {
   }
 
   function updateContainerMode(mode: ContainerSelectionMode) {
+    setPlacementOverrides({});
     setContainerMode(mode);
     setResult(null);
     setStep(0);
@@ -161,6 +177,7 @@ export function PackingWorkspace() {
   }
 
   function updateStrategy(nextStrategy: PackingStrategy) {
+    setPlacementOverrides({});
     setStrategy(nextStrategy);
     setResult(null);
     setStep(0);
@@ -168,6 +185,7 @@ export function PackingWorkspace() {
   }
 
   function updateAllowRotation(value: boolean) {
+    setPlacementOverrides({});
     setAllowRotation(value);
     setResult(null);
     setStep(0);
@@ -175,6 +193,7 @@ export function PackingWorkspace() {
   }
 
   function resetWorkspace() {
+    setPlacementOverrides({});
     setContainers(defaultContainers);
     setCartons(defaultCartons);
     setContainerMode('presets');
@@ -188,6 +207,7 @@ export function PackingWorkspace() {
   }
 
   function removeCarton(cartonId: string) {
+    setPlacementOverrides({});
     setCartons((items) => items.length > 1 ? items.filter((item) => item.id !== cartonId) : items);
     setResult(null);
     setStep(0);
@@ -195,6 +215,7 @@ export function PackingWorkspace() {
   }
 
   function removeContainer(containerId: string) {
+    setPlacementOverrides({});
     setContainers((items) => items.length > 1 ? items.filter((item) => item.id !== containerId) : items);
     setResult(null);
     setStep(0);
@@ -207,6 +228,7 @@ export function PackingWorkspace() {
   }
 
   async function importFile(file: File) {
+    setPlacementOverrides({});
     try {
       const rows = await readRowsFromFile(file);
       if (importTarget === 'cartons') {
@@ -235,6 +257,10 @@ export function PackingWorkspace() {
     setMessage('Đã tạo tệp Excel để tải xuống.');
   }
 
+  function applyManualOverride(placementId: string, override: PlacementOverride) {
+    setPlacementOverrides((current) => ({ ...current, [placementId]: { ...override } }));
+  }
+
   return <ControlCenterShell
     kpis={kpis}
     commandBar={<CommandBar title="Bảng điều phối xếp hàng 3D" breadcrumb="Điều hành / Digital Twin / Xếp hàng" isSaved={Boolean(result)} onImport={() => chooseImport('cartons')} onReset={resetWorkspace} onOptimize={runPacking} optimizeDisabled={invalid}><button className="command-button" type="button" onClick={exportWorkbook}><Download size={16} aria-hidden="true" />Xuất XLSX</button></CommandBar>}
@@ -245,7 +271,7 @@ export function PackingWorkspace() {
       <div className="work-grid">
         <section className="simulation-stage" aria-live="polite">
           <div className="stage-status"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}<span className="stage-context">{result ? `${usedContainerCount} container đang hiển thị` : 'Chờ dữ liệu xếp hàng'}</span></div>
-          <PackingViewer packedContainers={result?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} step={step} reducedMotion={reducedMotion} focusToken={focusToken} onRequestFocus={requestFocus} />
+          <PackingViewer packedContainers={presentationResult?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} onApplyPlacementOverride={applyManualOverride} step={step} reducedMotion={reducedMotion} focusToken={focusToken} onRequestFocus={requestFocus} />
           {result && placementCount > 0 && <><ViewerPlayback step={step} total={placementCount} playing={playing} speed={speed} reducedMotion={reducedMotion} onStepChange={(nextStep) => setStep(Math.min(placementCount, Math.max(0, nextStep)))} onPlayingChange={setPlaying} onSpeedChange={setSpeed} />{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</>}
         </section>
         <Inspector containers={containers} cartons={cartons} containerMode={containerMode} sampleContainers={sampleContainers} strategy={strategy} allowRotation={allowRotation} onAddCarton={addCarton} onAddContainer={addContainer} onContainerModeChange={updateContainerMode} onUpdateCarton={updateCarton} onUpdateContainer={updateContainer} onRemoveCarton={removeCarton} onRemoveContainer={removeContainer} onStrategyChange={updateStrategy} onAllowRotationChange={updateAllowRotation} onImportClick={chooseImport} />
@@ -253,7 +279,7 @@ export function PackingWorkspace() {
       <section className="result-panel command-result-panel">
         <div className="panel-heading"><div><p className="section-kicker">KẾT QUẢ TỐI ƯU</p><h2>Phương án xếp hàng</h2></div><span className={result?.leftover.length ? 'telemetry-tag warning' : 'telemetry-tag'}>{result ? `${packedCount}/${totalCount} kiện` : 'CHỜ TÍNH TOÁN'}</span></div>
         {!result && <div className="empty-state">Thiết lập container, kiện hàng và chiến lược trong Inspector, sau đó chạy tối ưu để kích hoạt Digital Twin.</div>}
-        {result && <><div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div><PackingResultTable result={result} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} onFocusPlacement={requestFocus} /></>}
+        {result && presentationResult && <><div className="result-summary-grid"><div>{result.results.filter((item) => item.packed.length > 0).map((item) => <article key={item.container.id} className="container-result"><h3>{item.container.name}</h3><p>{item.packed.length} kiện · {item.packed.reduce((sum, box) => sum + box.weight, 0).toFixed(1)} kg</p></article>)}</div>{result.leftover.length > 0 && <div className="leftover-list"><h3>Kiện chưa xếp</h3>{result.leftover.map((box, index) => <p key={`${box.id}-${index}`}><span>{box.label}</span><em>{reasonLabels[box.reason]}</em></p>)}</div>}</div><PackingResultTable result={presentationResult} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} onFocusPlacement={requestFocus} /></>}
       </section>
     </section>
   </ControlCenterShell>;

@@ -6,6 +6,26 @@ import { PackingWorkspace } from '@/components/packing/packing-workspace';
 afterEach(cleanup);
 
 describe('PackingWorkspace', () => {
+  it('applies a presentation override to the table and resets it before re-optimizing', () => {
+    render(<PackingWorkspace />);
+
+    fireEvent.click(screen.getByRole('button', { name: /t.i .u x.p h.ng/i }));
+    const firstResultRow = screen.getAllByRole('row')[1];
+    fireEvent.click(within(firstResultRow).getByRole('button'));
+    fireEvent.click(screen.getByRole('button', { name: /ch.nh tay/i }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'X (m)' }), { target: { value: '.25' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /cho ph.p ghi .. c.nh b.o/i }));
+    fireEvent.click(screen.getByRole('button', { name: /.p d.ng v. tr./i }));
+
+    expect(firstResultRow).toHaveTextContent(/0\.3 . 0\.0 . 0\.0/);
+
+    fireEvent.click(screen.getByRole('tab', { name: /chi.n l..c/i }));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'maxFill' } });
+    fireEvent.click(screen.getByRole('button', { name: /t.i .u x.p h.ng/i }));
+
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent(/0\.0 . 0\.0 . 0\.0/);
+  });
+
   it('summarizes the selected sample containers when optimisation starts', () => {
     render(<PackingWorkspace />);
 

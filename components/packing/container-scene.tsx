@@ -1,10 +1,13 @@
 'use client';
 
-import { ContactShadows, Edges, Html, OrbitControls, OrthographicCamera } from '@react-three/drei';
+import { ContactShadows, Edges, Html, OrbitControls, OrthographicCamera, TransformControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Group } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 
+import { getAxisAlignedDimensions } from '@/lib/packing/manual-layout';
+import type { ManualAxis, ManualSnap, ManualTransformMode, PlacementDraft, PlacementValidation } from '@/lib/packing/manual-layout';
 import type { PackedContainer, Placement } from '@/lib/packing/types';
 
 import { getCameraFrame, getEmptyRegions, getHeatColor } from './viewer-model';
@@ -22,6 +25,13 @@ export type ContainerSceneProps = {
   reducedMotion?: boolean;
   emptyRegions?: EmptyRegion[];
   showLabels?: boolean;
+  manualEditing?: boolean;
+  manualDraft?: PlacementDraft | null;
+  manualValidation?: PlacementValidation;
+  manualMode?: ManualTransformMode;
+  manualAxis?: ManualAxis;
+  manualSnap?: ManualSnap;
+  onManualDraftChange?: (draft: PlacementDraft) => void;
   onSelectPlacement: (key: string) => void;
   onHoverPlacement: (key: string | null) => void;
   onRequestFocus: (key: string) => void;
@@ -208,26 +218,45 @@ export function getPlacementRenderColor(packedContainer: PackedContainer, placem
   return placement.color || '#22d3ee';
 }
 
-function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, mode, showLabels, entry, onSelectPlacement, onHoverPlacement, onRequestFocus }: Omit<ContainerSceneProps, 'preset' | 'shell' | 'focusToken' | 'reducedMotion'> & { entry: EntryAnimation }) {
+function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, mode, showLabels, manualEditing = false, manualDraft = null, manualValidation = { valid: true, errors: [] }, manualMode = 'translate', manualAxis = 'X', manualSnap = .01, onManualDraftChange = () => {}, entry, onSelectPlacement, onHoverPlacement, onRequestFocus }: Omit<ContainerSceneProps, 'preset' | 'shell' | 'focusToken' | 'reducedMotion'> & { entry: EntryAnimation }) {
   const xray = mode === 'xray';
   const wireframe = mode === 'wireframe';
+  const selectedGroup = useRef<Group>(null!);
   const layerLevels = useMemo(() => [...new Set(placements.map((item) => item.y))].sort((a, b) => a - b), [placements]);
   const maximumWeight = useMemo(() => Math.max(Number.EPSILON, ...placements.map((item) => item.weight).filter((weight) => weight > 0)), [placements]);
   const entryPlacement = placements.at(-1);
+  const editablePlacement = placements.find((placement) => placementKey(packedContainer.container.id, placement) === selectedPlacementId);
+
+  function updateManualDraft() {
+    const object = selectedGroup.current;
+    if (!object || !editablePlacement || !manualDraft) return;
+    const rotation = [object.rotation.x, object.rotation.y, object.rotation.z].map((value) => Math.round(value / (Math.PI / 2)) * Math.PI / 2) as [number, number, number];
+    const dimensions = getAxisAlignedDimensions(editablePlacement, rotation);
+    const round = (value: number) => Math.round(value / manualSnap) * manualSnap;
+    onManualDraftChange({
+      x: round(object.position.x + packedContainer.container.width / 2 - dimensions.width / 2),
+      y: round(object.position.y - dimensions.height / 2),
+      z: round(object.position.z + packedContainer.container.length / 2 - dimensions.length / 2),
+      ...dimensions,
+      rotation,
+    });
+  }
 
   return <group>
     {placements.map((placement) => {
       const key = placementKey(packedContainer.container.id, placement);
       const selected = selectedPlacementId === key;
+      const editing = selected && manualEditing && manualDraft !== null;
+      const displayedPlacement = editing ? { ...placement, ...manualDraft } : placement;
       const hovered = hoveredPlacementId === key;
       const faded = selectedPlacementId !== null && !selected;
-      const targetPosition = getPlacementRenderPosition(packedContainer, placements, placement, mode, layerLevels);
+      const targetPosition = getPlacementRenderPosition(packedContainer, placements, displayedPlacement, mode, layerLevels);
       const entering = entryPlacement === placement;
       const moving = entering && entry.progress < 1;
       const position = entering ? getPlacementEntryRenderPosition(packedContainer, placement, targetPosition, entry.progress) : targetPosition;
       const color = moving ? '#22d3ee' : getPlacementRenderColor(packedContainer, placements, placement, mode, maximumWeight);
 
-      return <group key={key} name={`placement-${key}-${selected ? 'selected' : 'idle'}`} position={position}>
+      return <group key={key} ref={editing ? selectedGroup : undefined} name={`placement-${key}-${selected ? 'selected' : 'idle'}`} position={position} rotation={editing ? manualDraft.rotation : undefined}>
         <mesh
           castShadow
           receiveShadow
@@ -236,9 +265,9 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
           onPointerOver={(event) => { event.stopPropagation(); onHoverPlacement(key); }}
           onPointerOut={() => onHoverPlacement(null)}
         >
-          <boxGeometry args={[placement.width, placement.height, placement.length]} />
+          <boxGeometry args={[editing ? placement.width : displayedPlacement.width, editing ? placement.height : displayedPlacement.height, editing ? placement.length : displayedPlacement.length]} />
           <meshStandardMaterial
-            color={color}
+            color={editing && !manualValidation.valid ? '#fb7185' : color}
             roughness={.52}
             metalness={0}
             transparent={xray || faded}
@@ -251,11 +280,21 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
           <Edges color={selected ? '#fbbf24' : hovered ? '#a5f3fc' : '#164e63'} lineWidth={1} />
         </mesh>
         {showLabels && <Html center distanceFactor={8}><span className={selected ? 'scene-label selected' : 'scene-label'}>{placement.order}</span></Html>}
-        {hovered && <Html position={[0, placement.height / 2 + .28, 0]} center distanceFactor={8}><span role="tooltip" className="scene-floor-only">{placement.label} · D {placement.length.toFixed(2)} × R {placement.width.toFixed(2)} × C {placement.height.toFixed(2)} · {placement.weight.toFixed(1)} kg</span></Html>}
-        {selected && <Html position={[0, placement.height / 2 + .54, 0]} center distanceFactor={8}><span className="scene-floor-only" aria-label="Thông tin kiện đã chọn">D {placement.length.toFixed(2)} × R {placement.width.toFixed(2)} × C {placement.height.toFixed(2)} · X {placement.x.toFixed(2)} · Y {placement.y.toFixed(2)} · Z {placement.z.toFixed(2)} · ↻ Trục D–R–C</span></Html>}
+        {hovered && <Html position={[0, displayedPlacement.height / 2 + .28, 0]} center distanceFactor={8}><span role="tooltip" className="scene-floor-only">{placement.label} · D {displayedPlacement.length.toFixed(2)} × R {displayedPlacement.width.toFixed(2)} × C {displayedPlacement.height.toFixed(2)} · {placement.weight.toFixed(1)} kg</span></Html>}
+        {selected && <Html position={[0, displayedPlacement.height / 2 + .54, 0]} center distanceFactor={8}><span className="scene-floor-only" aria-label="Thông tin kiện đã chọn">D {displayedPlacement.length.toFixed(2)} × R {displayedPlacement.width.toFixed(2)} × C {displayedPlacement.height.toFixed(2)} · X {displayedPlacement.x.toFixed(2)} · Y {displayedPlacement.y.toFixed(2)} · Z {displayedPlacement.z.toFixed(2)} · ↻ {editing ? manualDraft.rotation.map((value) => `${Math.round(value * 180 / Math.PI)}°`).join('/') : 'Trục D–R–C'}</span></Html>}
         {!placement.stackable && <Html position={[0, placement.height / 2 + .22, 0]} center distanceFactor={8}><span className="scene-floor-only">SÀN</span></Html>}
       </group>;
     })}
+    {manualEditing && editablePlacement && manualDraft && <TransformControls
+      object={selectedGroup}
+      mode={manualMode}
+      translationSnap={manualSnap}
+      rotationSnap={Math.PI / 2}
+      showX={manualAxis === 'X'}
+      showY={manualAxis === 'Y'}
+      showZ={manualAxis === 'Z'}
+      onObjectChange={updateManualDraft}
+    />}
   </group>;
 }
 
@@ -275,7 +314,7 @@ function EmptyRegions({ packedContainer, regions }: { packedContainer: PackedCon
   </group>;
 }
 
-export function ContainerScene({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, preset, mode, shell, focusToken, reducedMotion = false, emptyRegions: sharedEmptyRegions, showLabels = true, onSelectPlacement, onHoverPlacement, onRequestFocus }: ContainerSceneProps) {
+export function ContainerScene({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, preset, mode, shell, focusToken, reducedMotion = false, emptyRegions: sharedEmptyRegions, showLabels = true, manualEditing = false, manualDraft = null, manualValidation, manualMode, manualAxis, manualSnap, onManualDraftChange, onSelectPlacement, onHoverPlacement, onRequestFocus }: ContainerSceneProps) {
   const controls = useRef<OrbitControlsImpl>(null);
   const { width, height, length } = packedContainer.container;
   const emptyRegions = useMemo(() => {
@@ -301,6 +340,13 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
         mode={mode}
         entry={entry}
         showLabels={showLabels}
+        manualEditing={manualEditing}
+        manualDraft={manualDraft}
+        manualValidation={manualValidation}
+        manualMode={manualMode}
+        manualAxis={manualAxis}
+        manualSnap={manualSnap}
+        onManualDraftChange={onManualDraftChange}
         onSelectPlacement={onSelectPlacement}
         onHoverPlacement={onHoverPlacement}
         onRequestFocus={onRequestFocus}

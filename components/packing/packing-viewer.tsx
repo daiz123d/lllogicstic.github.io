@@ -4,8 +4,11 @@ import { Box, Expand, Map } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { PackedContainer, Placement } from '@/lib/packing/types';
+import { createPlacementDraft, toPlacementOverride, validatePlacementDraft } from '@/lib/packing/manual-layout';
+import type { ManualAxis, ManualSnap, ManualTransformMode, PlacementDraft } from '@/lib/packing/manual-layout';
 
 import { ViewerControls } from './viewer-controls';
+import { ViewerManualControls } from './viewer-manual-controls';
 import { ViewerViewports } from './viewer-viewports';
 import type { ViewportLayout } from './viewer-viewports';
 import { getEmptyRegions, getViewerMetrics } from './viewer-model';
@@ -19,6 +22,7 @@ type ViewerProps = {
   reducedMotion?: boolean;
   focusToken?: string;
   onRequestFocus?: (key: string) => void;
+  onApplyPlacementOverride?: (placementId: string, override: ReturnType<typeof toPlacementOverride>) => void;
 };
 
 export function placementKey(containerId: string, placement: Placement) {
@@ -90,7 +94,7 @@ function PlanView({ container, placements, selectedPlacementId, onSelectPlacemen
   </div>;
 }
 
-export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, reducedMotion = false, focusToken = 'fit:0', onRequestFocus = () => {} }: ViewerProps) {
+export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, reducedMotion = false, focusToken = 'fit:0', onRequestFocus = () => {}, onApplyPlacementOverride = () => {} }: ViewerProps) {
   const [mode, setMode] = useState<'3d' | '2d'>('3d');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [preset, setPreset] = useState<ViewPreset>('iso');
@@ -99,6 +103,12 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   const [renderMode, setRenderMode] = useState<RenderMode>('solid');
   const [shell, setShell] = useState<ShellVisibility>({ all: true, left: true, right: true, roof: true, front: false });
   const [hoveredPlacementId, setHoveredPlacementId] = useState<string | null>(null);
+  const [manualEditing, setManualEditing] = useState(false);
+  const [manualMode, setManualMode] = useState<ManualTransformMode>('translate');
+  const [manualAxis, setManualAxis] = useState<ManualAxis>('X');
+  const [manualSnap, setManualSnap] = useState<ManualSnap>(.01);
+  const [manualDraftState, setManualDraftState] = useState<{ key: string; draft: PlacementDraft } | null>(null);
+  const [manualOverride, setManualOverride] = useState(false);
   const viewerRef = useRef<HTMLElement>(null);
   const supportsWebgl = useMemo(() => typeof window !== 'undefined' && 'WebGLRenderingContext' in window, []);
   const usedContainers = packedContainers.filter((item) => item.packed.length > 0);
@@ -111,10 +121,19 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   const insights = active ? getPackingInsights(active) : null;
   const metrics = active ? getViewerMetrics(active, visiblePlacements.length) : null;
   const selected = active ? visiblePlacements.find((placement) => placementKey(active.container.id, placement) === selectedPlacementId) ?? null : null;
+  const manualDraft = manualDraftState?.key === selectedPlacementId ? manualDraftState.draft : null;
+  const manualValidation = useMemo(() => active && selected && manualDraft
+    ? validatePlacementDraft(active.container, active.packed, selected, manualDraft)
+    : { valid: true, errors: [] }, [active, selected, manualDraft]);
   const emptyRegions = useMemo(() => {
     if (!active || renderMode !== 'space' || mode !== '3d' || !supportsWebgl) return undefined;
     return getEmptyRegions({ ...active, packed: visiblePlacements }, true);
   }, [active, mode, renderMode, supportsWebgl, visiblePlacements]);
+
+  useEffect(() => {
+    setManualDraftState(selected && selectedPlacementId ? { key: selectedPlacementId, draft: createPlacementDraft(selected) } : null);
+    setManualOverride(false);
+  }, [selectedPlacementId, selected?.x, selected?.y, selected?.z, selected?.width, selected?.height, selected?.length]);
 
   function enterFullscreen() {
     void viewerRef.current?.requestFullscreen?.();
@@ -134,9 +153,31 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     setCollapsedPip((current) => current.includes(pipPreset) ? current.filter((presetName) => presetName !== pipPreset) : [...current, pipPreset]);
   }
 
+  function applyManualDraft() {
+    if (!selectedPlacementId || !manualDraft || (!manualValidation.valid && !manualOverride)) return;
+    onApplyPlacementOverride(selectedPlacementId, toPlacementOverride(manualDraft));
+    setManualOverride(false);
+  }
+
+  function updateManualDraft(draft: PlacementDraft) {
+    if (selectedPlacementId) setManualDraftState({ key: selectedPlacementId, draft });
+  }
+
+  function cancelManualDraft() {
+    setManualDraftState(selected && selectedPlacementId ? { key: selectedPlacementId, draft: createPlacementDraft(selected) } : null);
+    setManualOverride(false);
+    setManualEditing(false);
+  }
+
+  function updateManualEditing(enabled: boolean) {
+    if (enabled) setRenderMode('solid');
+    setManualEditing(enabled);
+  }
+
   return <section className="viewer-panel" aria-label="Trình xem xếp thùng" ref={viewerRef}>
     <div className="viewer-toolbar"><div><p className="section-kicker">KHÔNG GIAN XẾP</p><h2>{active?.container.name ?? 'Chưa có phương án'}</h2>{insights && <div className="viewer-metrics" aria-label="Chỉ số xếp hàng"><span>{insights.count} kiện</span><span>Lấp đầy {insights.fillPercentage.toFixed(1)}%</span>{insights.floorOnlyCount > 0 && <span className="floor-only-metric">{insights.floorOnlyCount} kiện nằm sàn</span>}</div>}</div><div className="view-toggle" role="group" aria-label="Chế độ xem"><button type="button" aria-pressed={mode === '3d'} className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}><Box size={15} aria-hidden="true" />3D</button><button type="button" aria-pressed={mode === '2d'} className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}><Map size={15} aria-hidden="true" />Mặt bằng</button></div></div>
     {metrics && <ViewerControls mode={renderMode} shell={shell} preset={preset} metrics={metrics} selected={selected} unpacked={active?.unpacked ?? []} onModeChange={setRenderMode} onShellChange={setShell} onPresetChange={selectPreset} onFit={() => onRequestFocus('fit')} />}
+    {active && <ViewerManualControls enabled={manualEditing} selectedKey={selectedPlacementId} selected={manualDraft} validation={manualValidation} override={manualOverride} mode={manualMode} axis={manualAxis} snap={manualSnap} onEnabledChange={updateManualEditing} onModeChange={setManualMode} onAxisChange={setManualAxis} onSnapChange={setManualSnap} onDraftChange={updateManualDraft} onOverrideChange={setManualOverride} onApply={applyManualDraft} onCancel={cancelManualDraft} />}
     <div className="simulation-toolbar viewport-layout-controls" role="group" aria-label="Bố cục khung nhìn">
       {([['single', 'Single View'], ['pip', 'PIP'], ['quad', 'Quad View']] as const).map(([layout, label]) => <button key={layout} type="button" aria-pressed={viewportLayout === layout} className={viewportLayout === layout ? 'active' : ''} onClick={() => selectLayout(layout)}>{label}</button>)}
       <button type="button" aria-label="Mở toàn màn hình" onClick={enterFullscreen}><Expand size={15} aria-hidden="true" />Toàn màn hình</button>
@@ -146,7 +187,7 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     {!active && mode === '2d' && <div className="plan-view viewer-empty" aria-label="Sơ đồ xếp 2D">Chưa có kiện nào để hiển thị trên mặt bằng.</div>}
     {active && mode === '2d' && <PlanView container={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} onSelectPlacement={onSelectPlacement} />}
     {active && mode === '3d' && renderMode === 'exploded' && <div className="viewer-observation-warning" role="status">Chế độ quan sát – không phải vị trí thực tế</div>}
-    {active && mode === '3d' && supportsWebgl && <ViewerViewports layout={viewportLayout} mainPreset={preset} collapsedPip={collapsedPip} sceneProps={{ packedContainer: active, placements: visiblePlacements, selectedPlacementId, hoveredPlacementId, mode: renderMode, shell, focusToken, reducedMotion, emptyRegions, onSelectPlacement, onHoverPlacement: setHoveredPlacementId, onRequestFocus }} onMainPresetChange={selectPreset} onTogglePip={togglePip} />}
+    {active && mode === '3d' && supportsWebgl && <ViewerViewports layout={viewportLayout} mainPreset={preset} collapsedPip={collapsedPip} sceneProps={{ packedContainer: active, placements: visiblePlacements, selectedPlacementId, hoveredPlacementId, mode: renderMode, shell, focusToken, reducedMotion, emptyRegions, manualEditing, manualDraft, manualValidation, manualMode, manualAxis, manualSnap, onManualDraftChange: updateManualDraft, onSelectPlacement, onHoverPlacement: setHoveredPlacementId, onRequestFocus }} onMainPresetChange={selectPreset} onTogglePip={togglePip} />}
     {active && mode === '3d' && !supportsWebgl && <div className="viewer-empty">Thiết bị này chưa hỗ trợ WebGL. Hãy dùng “Mặt bằng” để xem phương án xếp.</div>}
   </section>;
 }
