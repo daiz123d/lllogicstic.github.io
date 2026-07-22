@@ -1,4 +1,5 @@
 import { validateManualPlacement } from '@/src/binPacking.js';
+import { Euler, Matrix4 } from 'three';
 
 import type { PackedContainer, Placement } from './types';
 
@@ -40,22 +41,40 @@ export function rotatePlacementDraft(draft: PlacementDraft, axis: ManualAxis): P
   const rotation: [number, number, number] = [...draft.rotation];
   const index = axis === 'X' ? 0 : axis === 'Y' ? 1 : 2;
   rotation[index] += Math.PI / 2;
+  const dimensions = getAxisAlignedDimensions(getUnrotatedDimensions(draft), rotation);
 
-  if (axis === 'X') return { ...draft, height: draft.length, length: draft.height, rotation };
-  if (axis === 'Y') return { ...draft, width: draft.length, length: draft.width, rotation };
-  return { ...draft, width: draft.height, height: draft.width, rotation };
+  return { ...draft, ...dimensions, rotation };
+}
+
+function normalizeExtent(value: number) {
+  return Math.round(value * 1e12) / 1e12;
+}
+
+function getRotationElements(rotation: [number, number, number]) {
+  return new Matrix4().makeRotationFromEuler(new Euler(...rotation, 'XYZ')).elements;
+}
+
+function getUnrotatedDimensions(draft: PlacementDraft) {
+  const matrix = getRotationElements(draft.rotation);
+  return {
+    width: normalizeExtent(Math.abs(matrix[0]) * draft.width + Math.abs(matrix[1]) * draft.height + Math.abs(matrix[2]) * draft.length),
+    height: normalizeExtent(Math.abs(matrix[4]) * draft.width + Math.abs(matrix[5]) * draft.height + Math.abs(matrix[6]) * draft.length),
+    length: normalizeExtent(Math.abs(matrix[8]) * draft.width + Math.abs(matrix[9]) * draft.height + Math.abs(matrix[10]) * draft.length),
+  };
 }
 
 export function getAxisAlignedDimensions(
   placement: Pick<Placement, 'width' | 'height' | 'length'>,
   rotation: [number, number, number],
 ) {
-  let { width, height, length } = placement;
-  const turns = rotation.map((value) => Math.abs(Math.round(value / (Math.PI / 2))) % 2);
-  if (turns[0]) [height, length] = [length, height];
-  if (turns[1]) [width, length] = [length, width];
-  if (turns[2]) [width, height] = [height, width];
-  return { width, height, length };
+  const matrix = getRotationElements(rotation);
+  const { width, height, length } = placement;
+
+  return {
+    width: normalizeExtent(Math.abs(matrix[0]) * width + Math.abs(matrix[4]) * height + Math.abs(matrix[8]) * length),
+    height: normalizeExtent(Math.abs(matrix[1]) * width + Math.abs(matrix[5]) * height + Math.abs(matrix[9]) * length),
+    length: normalizeExtent(Math.abs(matrix[2]) * width + Math.abs(matrix[6]) * height + Math.abs(matrix[10]) * length),
+  };
 }
 
 export function validatePlacementDraft(

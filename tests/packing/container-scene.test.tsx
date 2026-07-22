@@ -2,7 +2,8 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ContainerScene, getDoorOpenAngle, getPlacementEntryRenderPosition, getPlacementRenderColor, getShellMaterialProps, isFrontDoorVisible } from '@/components/packing/container-scene';
+import { ContainerScene, getDoorOpenAngle, getManualDraftRenderPosition, getPlacementDraftFromSceneTransform, getPlacementEntryRenderPosition, getPlacementRenderColor, getShellMaterialProps, isFrontDoorVisible } from '@/components/packing/container-scene';
+import { createPlacementDraft } from '@/lib/packing/manual-layout';
 import { PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
@@ -38,6 +39,7 @@ function renderViewer({ packedContainers = [packedContainer], step = 1 }: Partia
 
 afterEach(() => {
   cleanup();
+  dreiSpies.transformControls.mockClear();
   threeSpies.lookAt.mockClear();
   threeSpies.positionSet.mockClear();
   threeSpies.zoomSet.mockClear();
@@ -45,6 +47,63 @@ afterEach(() => {
 });
 
 describe('ContainerScene viewer contract', () => {
+  it('keeps exploded presentation Y out of an X-only manual draft nudge', () => {
+    const upperPlacement = { ...packedContainer.packed[0], id: 'box-2', order: 2, y: 1, width: 1, height: 1, length: 2 };
+    const stackedContainer = { ...packedContainer, packed: [packedContainer.packed[0], upperPlacement] };
+    const draft = createPlacementDraft(upperPlacement);
+    const physicalPosition = getManualDraftRenderPosition(stackedContainer, draft);
+    const explodedPosition = [-.5, 1.78, -1] as [number, number, number];
+    const { container } = render(<ContainerScene
+      packedContainer={stackedContainer}
+      placements={stackedContainer.packed}
+      selectedPlacementId="container-1:2"
+      hoveredPlacementId={null}
+      preset="iso"
+      mode="exploded"
+      shell={{ all: true, left: true, right: true, roof: true, front: false }}
+      focusToken="fit:0"
+      reducedMotion
+      manualEditing
+      manualDraft={draft}
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    />);
+
+    expect(physicalPosition[1]).not.toBe(explodedPosition[1]);
+    expect(container.querySelector('[name="placement-container-1:2-selected"]')).toHaveAttribute('position', physicalPosition.join(','));
+    expect(getPlacementDraftFromSceneTransform(stackedContainer, upperPlacement, [physicalPosition[0] + .05, physicalPosition[1], physicalPosition[2]], draft.rotation, .01)).toMatchObject({ x: .05, y: 1, z: 0 });
+  });
+
+  it('keeps entry-animation Z out of an X-only manual draft nudge', () => {
+    const entryPlacement = { ...packedContainer.packed[0], length: 2, z: .5 };
+    const entryContainer = { ...packedContainer, packed: [entryPlacement] };
+    const draft = createPlacementDraft(entryPlacement);
+    const physicalPosition = getManualDraftRenderPosition(entryContainer, draft);
+    const entryPosition = getPlacementEntryRenderPosition(entryContainer, entryPlacement, physicalPosition, 0);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const { container } = render(<ContainerScene
+      packedContainer={entryContainer}
+      placements={entryContainer.packed}
+      selectedPlacementId="container-1:1"
+      hoveredPlacementId={null}
+      preset="iso"
+      mode="solid"
+      shell={{ all: true, left: true, right: true, roof: true, front: false }}
+      focusToken="fit:0"
+      manualEditing
+      manualDraft={draft}
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    />);
+
+    expect(physicalPosition[2]).not.toBe(entryPosition[2]);
+    expect(container.querySelector('[name="placement-container-1:1-selected"]')).toHaveAttribute('position', physicalPosition.join(','));
+    expect(getPlacementDraftFromSceneTransform(entryContainer, entryPlacement, [physicalPosition[0] + .05, physicalPosition[1], physicalPosition[2]], draft.rotation, .01)).toMatchObject({ x: .05, y: 0, z: .5 });
+  });
+
   it('keeps fit and preset controls available in the WebGL fallback', () => {
     renderViewer({ packedContainers: [packedContainer], step: 1 });
 

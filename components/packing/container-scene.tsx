@@ -218,6 +218,36 @@ export function getPlacementRenderColor(packedContainer: PackedContainer, placem
   return placement.color || '#22d3ee';
 }
 
+export function getManualDraftRenderPosition(packedContainer: PackedContainer, draft: PlacementDraft): [number, number, number] {
+  return [
+    draft.x + draft.width / 2 - packedContainer.container.width / 2,
+    draft.y + draft.height / 2,
+    draft.z + draft.length / 2 - packedContainer.container.length / 2,
+  ];
+}
+
+export function getPlacementDraftFromSceneTransform(
+  packedContainer: PackedContainer,
+  placement: Placement,
+  position: [number, number, number],
+  rotation: [number, number, number],
+  snap: ManualSnap,
+): PlacementDraft {
+  const dimensions = getAxisAlignedDimensions(placement, rotation);
+  const round = (value: number) => {
+    const rounded = Math.round(value / snap) * snap;
+    return Object.is(rounded, -0) ? 0 : rounded;
+  };
+
+  return {
+    x: round(position[0] + packedContainer.container.width / 2 - dimensions.width / 2),
+    y: round(position[1] - dimensions.height / 2),
+    z: round(position[2] + packedContainer.container.length / 2 - dimensions.length / 2),
+    ...dimensions,
+    rotation,
+  };
+}
+
 function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, mode, showLabels, manualEditing = false, manualDraft = null, manualValidation = { valid: true, errors: [] }, manualMode = 'translate', manualAxis = 'X', manualSnap = .01, onManualDraftChange = () => {}, entry, onSelectPlacement, onHoverPlacement, onRequestFocus }: Omit<ContainerSceneProps, 'preset' | 'shell' | 'focusToken' | 'reducedMotion'> & { entry: EntryAnimation }) {
   const xray = mode === 'xray';
   const wireframe = mode === 'wireframe';
@@ -231,15 +261,7 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
     const object = selectedGroup.current;
     if (!object || !editablePlacement || !manualDraft) return;
     const rotation = [object.rotation.x, object.rotation.y, object.rotation.z].map((value) => Math.round(value / (Math.PI / 2)) * Math.PI / 2) as [number, number, number];
-    const dimensions = getAxisAlignedDimensions(editablePlacement, rotation);
-    const round = (value: number) => Math.round(value / manualSnap) * manualSnap;
-    onManualDraftChange({
-      x: round(object.position.x + packedContainer.container.width / 2 - dimensions.width / 2),
-      y: round(object.position.y - dimensions.height / 2),
-      z: round(object.position.z + packedContainer.container.length / 2 - dimensions.length / 2),
-      ...dimensions,
-      rotation,
-    });
+    onManualDraftChange(getPlacementDraftFromSceneTransform(packedContainer, editablePlacement, [object.position.x, object.position.y, object.position.z], rotation, manualSnap));
   }
 
   return <group>
@@ -250,8 +272,8 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
       const displayedPlacement = editing ? { ...placement, ...manualDraft } : placement;
       const hovered = hoveredPlacementId === key;
       const faded = selectedPlacementId !== null && !selected;
-      const targetPosition = getPlacementRenderPosition(packedContainer, placements, displayedPlacement, mode, layerLevels);
-      const entering = entryPlacement === placement;
+      const targetPosition = editing ? getManualDraftRenderPosition(packedContainer, manualDraft) : getPlacementRenderPosition(packedContainer, placements, displayedPlacement, mode, layerLevels);
+      const entering = !editing && entryPlacement === placement;
       const moving = entering && entry.progress < 1;
       const position = entering ? getPlacementEntryRenderPosition(packedContainer, placement, targetPosition, entry.progress) : targetPosition;
       const color = moving ? '#22d3ee' : getPlacementRenderColor(packedContainer, placements, placement, mode, maximumWeight);

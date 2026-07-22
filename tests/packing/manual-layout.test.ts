@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   applyPlacementOverride,
   createPlacementDraft,
+  getAxisAlignedDimensions,
   rotatePlacementDraft,
+  toPlacementOverride,
   validatePlacementDraft,
 } from '@/lib/packing/manual-layout';
 import type { PackedContainer, Placement } from '@/lib/packing/types';
@@ -65,6 +67,20 @@ describe('manual placement layout adapter', () => {
     expect(aroundX).toMatchObject({ width: 1, height: 2, length: 1, rotation: [Math.PI / 2, 0, 0] });
     expect(aroundY).toMatchObject({ width: 2, height: 1, length: 1, rotation: [0, Math.PI / 2, 0] });
     expect(aroundZ).toMatchObject({ width: 1, height: 1, length: 2, rotation: [0, 0, Math.PI / 2] });
+  });
+
+  it('matches the Three XYZ Euler AABB for combined rotations and persists those dimensions', () => {
+    const nonsymmetric = { ...selected, width: 1, height: 2, length: 3 };
+    const rotation: [number, number, number] = [Math.PI / 2, Math.PI / 2, 0];
+    const dimensions = getAxisAlignedDimensions(nonsymmetric, rotation);
+    const draft = { ...createPlacementDraft(nonsymmetric), ...dimensions, rotation };
+    const sequentialDraft = rotatePlacementDraft(rotatePlacementDraft(createPlacementDraft(nonsymmetric), 'X'), 'Y');
+    const source: PackedContainer = { container, packed: [nonsymmetric], unpacked: [] };
+
+    expect(dimensions).toEqual({ width: 3, height: 1, length: 2 });
+    expect(sequentialDraft).toMatchObject({ ...dimensions, rotation });
+    expect(validatePlacementDraft(container, source.packed, nonsymmetric, draft)).toEqual({ valid: true, errors: [] });
+    expect(applyPlacementOverride(source, 'container-1:1', toPlacementOverride(draft)).packed[0]).toMatchObject(dimensions);
   });
 
   it('applies only the keyed placement without mutating automatic packing', () => {

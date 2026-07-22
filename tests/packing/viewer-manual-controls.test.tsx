@@ -110,6 +110,15 @@ describe('ViewerManualControls', () => {
 });
 
 describe('manual TransformControls integration', () => {
+  it('returns to Solid and locks observation-mode switching while editing', () => {
+    render(<PackingViewer packedContainers={[packedContainer]} selectedPlacementId="container-1:1" onSelectPlacement={() => {}} onApplyPlacementOverride={() => {}} step={1} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Exploded View' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Chỉnh tay' }));
+
+    expect(screen.getByRole('button', { name: 'Solid' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Exploded View' })).toBeDisabled();
+  });
+
   it('mounts one gizmo only in the primary viewport in Quad View', () => {
     render(<PackingViewer packedContainers={[packedContainer]} selectedPlacementId="container-1:1" onSelectPlacement={() => {}} onApplyPlacementOverride={() => {}} step={1} />);
     fireEvent.click(screen.getByRole('button', { name: 'Chỉnh tay' }));
@@ -118,6 +127,17 @@ describe('manual TransformControls integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Quad View' }));
 
     expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(4);
+    expect(dreiSpies.transformControls).toHaveBeenCalledTimes(1);
+  });
+
+  it('mounts one gizmo only in the primary viewport in PIP', () => {
+    render(<PackingViewer packedContainers={[packedContainer]} selectedPlacementId="container-1:1" onSelectPlacement={() => {}} onApplyPlacementOverride={() => {}} step={1} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Chỉnh tay' }));
+    dreiSpies.transformControls.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'PIP' }));
+
+    expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(3);
     expect(dreiSpies.transformControls).toHaveBeenCalledTimes(1);
   });
 });
