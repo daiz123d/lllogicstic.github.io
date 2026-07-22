@@ -93,40 +93,6 @@ export function findBestContainer(boxes, options = {}) {
     };
 }
 
-function findSmallestUsableContainer(boxes, options = {}) {
-    const presets = [...containerPresets].sort((a, b) =>
-        (a.length * a.width * a.height) - (b.length * b.width * b.height)
-    );
-    const packingBoxes = normalizePackingBoxes(boxes);
-    const totalBoxes = countPackingBoxes(packingBoxes);
-
-    for (const container of presets) {
-        const result = packBoxes(
-            container.width,
-            container.height,
-            container.length,
-            packingBoxes,
-            container.maxWeight || 0,
-            options
-        );
-        if (result.packed.length <= 0) continue;
-
-        const unpacked = result.unpacked || [];
-        return {
-            ...container,
-            fitsAll: unpacked.length === 0 && result.packed.length >= totalBoxes,
-            packed: result.packed,
-            unpacked,
-            packedCount: result.packed.length,
-            totalBoxes,
-            totalWeight: result.packed.reduce((sum, box) => sum + (box.weight || 0), 0),
-            leftover: unpacked.length
-        };
-    }
-
-    return null;
-}
-
 // Gom hộp đơn lẻ cùng đặc tính thành quantity
 export function selectBestPresetContainers(boxes, options = {}) {
     let remaining = normalizePackingBoxes(boxes);
@@ -134,21 +100,13 @@ export function selectBestPresetContainers(boxes, options = {}) {
     const maxContainers = Math.max(1, options.maxPresetContainers || countPackingBoxes(remaining));
 
     while (countPackingBoxes(remaining) > 0 && results.length < maxContainers) {
-        const best = findSmallestUsableContainer(remaining, options);
+        const remainingCount = countPackingBoxes(remaining);
+        const best = findBestContainer(remaining, options);
 
-        if (!best || best.packedCount <= 0) {
-            break;
-        }
+        if (!best || best.packedCount <= 0 || best.leftover >= remainingCount) break;
 
         results.push({
-            container: {
-                name: best.name,
-                width: best.width,
-                height: best.height,
-                length: best.length,
-                maxWeight: best.maxWeight || 0,
-                presetName: best.name
-            },
+            container: { name: best.name, width: best.width, height: best.height, length: best.length, maxWeight: best.maxWeight || 0, presetName: best.name },
             packed: best.packed,
             unpacked: best.unpacked,
             fitsAll: best.fitsAll
