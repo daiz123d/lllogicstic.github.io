@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { PackingViewer } from '@/components/packing/packing-viewer';
+import { getCargoFocus, PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
 const floorOnlyContainer: PackedContainer = {
@@ -13,13 +13,33 @@ const floorOnlyContainer: PackedContainer = {
 afterEach(cleanup);
 
 describe('PackingViewer', () => {
-  it('switches to a readable 2D plan', () => {
+  it('keeps an empty plan distinct from a packed plan', () => {
+    render(<PackingViewer packedContainers={[]} selectedPlacementId={null} onSelectPlacement={() => {}} step={0} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^mặt bằng$/i }));
+
+    expect(screen.getByLabelText(/sơ đồ xếp 2d/i)).toHaveTextContent(/chưa có kiện nào để hiển thị/i);
+  });
+
+  it('uses a cargo framing span clamped to 45% of the largest container dimension', () => {
+    expect(getCargoFocus(floorOnlyContainer, floorOnlyContainer.packed).span).toBe(1.8);
+  });
+
+  it('exposes the floor-only explanation in the packed 2D accessible label', () => {
     render(<PackingViewer packedContainers={[floorOnlyContainer]} selectedPlacementId={null} onSelectPlacement={() => {}} step={1} />);
 
     fireEvent.click(screen.getByRole('button', { name: /^mặt bằng$/i }));
 
     expect(screen.getByLabelText(/sơ đồ xếp 2d/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /kiện sàn.*không chồng.*nằm sàn/i })).toBeInTheDocument();
+  });
+
+  it('gives floor-only cartons a distinct plan class', () => {
+    render(<PackingViewer packedContainers={[floorOnlyContainer]} selectedPlacementId={null} onSelectPlacement={() => {}} step={1} />);
+
+    fireEvent.click(screen.getAllByRole('button')[1]);
+
+    expect(screen.getAllByRole('button').find((button) => button.classList.contains('plan-box'))).toHaveClass('floor-only');
   });
 
   it('shows fill and floor-only status for the active container', () => {

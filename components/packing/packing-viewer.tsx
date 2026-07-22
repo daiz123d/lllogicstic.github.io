@@ -24,10 +24,10 @@ function getPackingInsights(container: PackedContainer) {
   const packedVolume = container.packed.reduce((total, placement) => total + placement.width * placement.height * placement.length, 0);
   const containerVolume = container.container.width * container.container.height * container.container.length;
 
-  return { count, fillPercentage: containerVolume ? (packedVolume / containerVolume) * 100 : 0, floorOnlyCount: container.packed.filter((placement) => !placement.stackable).length };
+  return { count, fillPercentage: containerVolume ? Math.min(100, (packedVolume / containerVolume) * 100) : 0, floorOnlyCount: container.packed.filter((placement) => !placement.stackable).length };
 }
 
-function getCargoFocus(container: PackedContainer, placements: Placement[]) {
+export function getCargoFocus(container: PackedContainer, placements: Placement[]) {
   const { width, height, length } = container.container;
   if (!placements.length) return { target: [0, height * .35, 0] as [number, number, number], span: Math.max(width, height, length) };
 
@@ -41,7 +41,7 @@ function getCargoFocus(container: PackedContainer, placements: Placement[]) {
   }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity });
   const target: [number, number, number] = [(bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2, (bounds.minZ + bounds.maxZ) / 2];
 
-  return { target, span: Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, 1) };
+  return { target, span: Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, Math.max(width, height, length) * .45) };
 }
 
 function CameraRig({ preset, focus }: { preset: CameraPreset; focus: ReturnType<typeof getCargoFocus> }) {
@@ -67,6 +67,7 @@ function Scene({ container, placements, selectedPlacementId, onSelectPlacement, 
   wireframe: boolean;
 }) {
   const { width, height, length } = container.container;
+  const largestDimension = Math.max(width, height, length);
   const cargoFocus = useMemo(() => getCargoFocus(container, placements), [container, placements]);
 
   return <Canvas camera={{ position: [width * 1.4, height * 1.1 + 2, length * 1.4], fov: 44 }} shadows dpr={[1, 2]}>
@@ -74,7 +75,7 @@ function Scene({ container, placements, selectedPlacementId, onSelectPlacement, 
     <CameraRig preset={cameraPreset} focus={cargoFocus} />
     <ambientLight intensity={0.72} />
     <directionalLight castShadow intensity={2.2} position={[width * 1.5, height * 2 + 3, length]} shadow-mapSize={[2048, 2048]} />
-    <Grid args={[Math.max(width, length) * 1.7, Math.max(10, Math.ceil(Math.max(width, length) * 4))]} cellColor="#183857" sectionColor="#2b6380" position={[0, -0.02, 0]} />
+    <Grid args={[largestDimension * 1.35, Math.max(10, Math.ceil(largestDimension * 4))]} cellColor="#183857" sectionColor="#2b6380" position={[0, -0.02, 0]} />
     <mesh position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
       <planeGeometry args={[Math.max(width, length) * 4, Math.max(width, length) * 4]} />
       <meshStandardMaterial color="#081725" roughness={0.92} />
@@ -83,7 +84,7 @@ function Scene({ container, placements, selectedPlacementId, onSelectPlacement, 
       <mesh position={[0, -.04, 0]} receiveShadow><boxGeometry args={[width, .08, length]} /><meshStandardMaterial color="#123b55" transparent opacity={.72} roughness={.86} /></mesh>
       <mesh position={[-width / 2, height / 2, 0]}><boxGeometry args={[.05, height, length]} /><meshStandardMaterial color="#164764" transparent opacity={.19} /></mesh>
       <mesh position={[width / 2, height / 2, 0]}><boxGeometry args={[.05, height, length]} /><meshStandardMaterial color="#164764" transparent opacity={.19} /></mesh>
-      <mesh position={[0, height / 2, length / 2]}><boxGeometry args={[width, height, .05]} /><meshStandardMaterial color="#164764" transparent opacity={.24} /></mesh>
+      <mesh position={[0, height / 2, -length / 2]}><boxGeometry args={[width, height, .05]} /><meshStandardMaterial color="#164764" transparent opacity={.24} /></mesh>
       <mesh position={[0, height / 2, 0]}><boxGeometry args={[width, height, length]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /><Edges color="#67e8f9" transparent opacity={.38} /></mesh>
     </group>
     {placements.map((placement) => {
@@ -119,7 +120,7 @@ function PlanView({ container, placements, selectedPlacementId, onSelectPlacemen
     <div className="plan-grid" style={{ aspectRatio: `${width} / ${length}` }}>
       {placements.map((placement) => {
         const key = placementKey(container.container.id, placement);
-        return <button type="button" aria-label={`Kiện ${placement.label}, thứ tự ${placement.order}${!placement.stackable ? ', không chồng — nằm sàn' : ''}`} className={selectedPlacementId === key ? 'plan-box selected' : 'plan-box'} key={key} onClick={() => onSelectPlacement(key)} style={{ left: `${(placement.x / width) * 100}%`, top: `${(placement.z / length) * 100}%`, width: `${(placement.width / width) * 100}%`, height: `${(placement.length / length) * 100}%`, background: placement.color || '#22D3EE' }}>{placement.order}</button>;
+        return <button type="button" aria-label={`Kiện ${placement.label}, thứ tự ${placement.order}${!placement.stackable ? ', không chồng — nằm sàn' : ''}`} className={`plan-box${selectedPlacementId === key ? ' selected' : ''}${!placement.stackable ? ' floor-only' : ''}`} key={key} onClick={() => onSelectPlacement(key)} style={{ left: `${(placement.x / width) * 100}%`, top: `${(placement.z / length) * 100}%`, width: `${(placement.width / width) * 100}%`, height: `${(placement.length / length) * 100}%`, background: placement.color || '#22D3EE' }}>{placement.order}</button>;
       })}
     </div>
     <p>Nhấn vào kiện để xem thông tin. Mặt bằng hiển thị theo trục dài × rộng.</p>
@@ -144,7 +145,7 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   }
 
   return <section className="viewer-panel" aria-label="Trình xem xếp thùng" ref={viewerRef}>
-    <div className="viewer-toolbar"><div><p className="section-kicker">KHÔNG GIAN XẾP</p><h2>{active?.container.name ?? 'Chưa có phương án'}</h2>{insights && <div className="viewer-metrics"><span>{insights.count} kiện</span><span>Lấp đầy {insights.fillPercentage.toFixed(1)}%</span>{insights.floorOnlyCount > 0 && <span className="floor-only-metric">{insights.floorOnlyCount} kiện nằm sàn</span>}</div>}</div><div className="view-toggle" role="group" aria-label="Chế độ xem"><button type="button" className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}><Box size={15} aria-hidden="true" />3D</button><button type="button" className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}><Map size={15} aria-hidden="true" />Mặt bằng</button></div></div>
+    <div className="viewer-toolbar"><div><p className="section-kicker">KHÔNG GIAN XẾP</p><h2>{active?.container.name ?? 'Chưa có phương án'}</h2>{insights && <div className="viewer-metrics" aria-label="Chỉ số xếp hàng"><span>{insights.count} kiện</span><span>Lấp đầy {insights.fillPercentage.toFixed(1)}%</span>{insights.floorOnlyCount > 0 && <span className="floor-only-metric">{insights.floorOnlyCount} kiện nằm sàn</span>}</div>}</div><div className="view-toggle" role="group" aria-label="Chế độ xem"><button type="button" className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}><Box size={15} aria-hidden="true" />3D</button><button type="button" className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}><Map size={15} aria-hidden="true" />Mặt bằng</button></div></div>
     <div className="simulation-toolbar" role="toolbar" aria-label="Điều khiển mô phỏng"><button type="button" aria-label="Góc phối cảnh" className={cameraPreset === 'perspective' ? 'active' : ''} onClick={() => { setMode('3d'); setCameraPreset('perspective'); }}><Rotate3D size={15} />Phối cảnh</button><button type="button" aria-label="Góc nhìn mặt bên" className={cameraPreset === 'side' ? 'active' : ''} onClick={() => { setMode('3d'); setCameraPreset('side'); }}><ScanLine size={15} />Mặt bên</button><button type="button" aria-label="Góc nhìn mặt trước" className={cameraPreset === 'front' ? 'active' : ''} onClick={() => { setMode('3d'); setCameraPreset('front'); }}><Crosshair size={15} />Mặt trước</button><button type="button" aria-label="Bật hoặc tắt nhãn kiện" className={showLabels ? 'active' : ''} onClick={() => setShowLabels((value) => !value)}><Tags size={15} />Nhãn</button><button type="button" aria-label="Bật hoặc tắt wireframe" className={wireframe ? 'active' : ''} onClick={() => setWireframe((value) => !value)}><Box size={15} />Wireframe</button><button type="button" aria-label="Mở toàn màn hình" onClick={enterFullscreen}><Expand size={15} />Toàn màn hình</button></div>
     {usedContainers.length > 1 && <div className="container-tabs">{usedContainers.map((item) => <button className={item.container.id === active?.container.id ? 'active' : ''} type="button" key={item.container.id} onClick={() => setActiveId(item.container.id)}>{item.container.name}</button>)}</div>}
     {!active && mode === '3d' && <div className="viewer-empty">Xếp hàng để mở mô hình container 3D.</div>}
