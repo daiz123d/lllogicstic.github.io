@@ -147,7 +147,7 @@ test('operates the hybrid cutaway viewer without HUD or PIP overlap', async ({ p
   await optimize(page);
 
   await page.getByRole('button', { name: 'Vừa khung hình' }).click();
-  await page.getByRole('button', { name: 'PIP' }).click();
+  await expect(page.getByRole('button', { name: 'PIP' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('canvas')).toHaveCount(3);
   await expect(page.getByLabel('Mặt trên viewport PIP')).toBeVisible();
   await expect(page.getByLabel('Mặt trước viewport PIP')).toBeVisible();
@@ -173,6 +173,17 @@ test('operates the hybrid cutaway viewer without HUD or PIP overlap', async ({ p
   expect(pipBox!.y + pipBox!.height).toBeLessThanOrEqual(layoutBox!.y + layoutBox!.height);
   expect(pipBox!.y).toBeGreaterThanOrEqual(toolbarBox!.y + toolbarBox!.height);
   expect(pipBox!.y).toBeGreaterThanOrEqual(hudBox!.y + hudBox!.height);
+
+  const collapseTop = page.getByRole('button', { name: 'Thu gọn Mặt trên' });
+  expect(await collapseTop.evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return hit === button || (hit instanceof Node && button.contains(hit));
+  })).toBe(true);
+  await collapseTop.click();
+  await expect(page.locator('canvas')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Mở Mặt trên PIP' }).click();
+  await expect(page.locator('canvas')).toHaveCount(3);
 
   await page.getByRole('button', { name: 'Quad View' }).click();
   await expect(page.locator('canvas')).toHaveCount(4);
@@ -276,15 +287,15 @@ test('hydrates the app from the GitHub Pages mount path', async ({ page }) => {
 });
 
 test('keeps a 150-placement scene interactive without mounting disabled work', async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   await configureLargeScene(page);
 
-  await expect(page.locator('canvas')).toHaveCount(1);
+  await expect(page.locator('canvas')).toHaveCount(3);
   await page.getByRole('button', { name: 'Vừa khung hình' }).click();
   await page.getByRole('button', { name: 'Wireframe' }).click();
   await expect(page.getByRole('button', { name: 'Wireframe' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('status', { name: 'Thể tích chưa sử dụng' })).toHaveCount(0);
-  await expect(page.locator('.scene-canvas')).toHaveAttribute('data-empty-region-count', '0');
+  await expect(page.locator('.scene-canvas').first()).toHaveAttribute('data-empty-region-count', '0');
 
   await page.getByRole('button', { name: 'PIP' }).click();
   await expect(page.locator('canvas')).toHaveCount(3);

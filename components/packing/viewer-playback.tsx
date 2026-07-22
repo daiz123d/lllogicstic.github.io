@@ -45,7 +45,7 @@ export function ViewerPlayback({ step, total, playing, speed, reducedMotion = fa
   }
 
   return <section className="playback-panel" aria-label="Trình tự xếp hàng" data-reduced-motion={reducedMotion || undefined}>
-    <div><p className="section-kicker">PLAYBACK</p><strong>Bước {clampedStep}/{total}</strong></div>
+    <div><p className="section-kicker">PLAYBACK</p><strong aria-live="polite" aria-atomic="true">Bước {clampedStep}/{total}</strong></div>
     <div className="playback-controls">
       <button type="button" aria-label="Trước" onClick={() => onStepChange(clamp(clampedStep - 1, total))}><SkipBack size={16} aria-hidden="true" />Trước</button>
       <button type="button" aria-label={playing ? 'Tạm dừng' : 'Phát'} onClick={togglePlayback} disabled={atEnd && !playing}>{playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}{playing ? 'Tạm dừng' : 'Phát'}</button>

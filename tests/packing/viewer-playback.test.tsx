@@ -56,4 +56,12 @@ describe('ViewerPlayback', () => {
     expect(onStep).toHaveBeenNthCalledWith(2, 1);
     expect(onStep).toHaveBeenNthCalledWith(3, 2);
   });
+
+  it('announces only the changing playback step politely', () => {
+    render(<ViewerPlayback step={1} total={2} playing={false} speed={1} onStepChange={() => {}} onPlayingChange={() => {}} onSpeedChange={() => {}} />);
+
+    expect(screen.getByText('Bước 1/2')).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByText('Bước 1/2')).toHaveAttribute('aria-atomic', 'true');
+    expect(screen.getByRole('region', { name: 'Trình tự xếp hàng' })).not.toHaveAttribute('aria-live');
+  });
 });

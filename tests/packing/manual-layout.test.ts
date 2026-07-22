@@ -57,6 +57,15 @@ describe('manual placement layout adapter', () => {
     expect(validatePlacementDraft(container, [selected, repeatedId], selected, { ...selected, z: 2 })).toEqual({ valid: false, errors: ['Va chạm kiện khác'] });
   });
 
+  it('rejects moving a support when the prospective whole layout leaves cargo unsupported', () => {
+    const cargoAbove = { ...other, x: 0, y: 1, z: 0, width: 1, height: 1, length: 2 };
+
+    const result = validatePlacementDraft(container, [selected, cargoAbove], selected, { ...selected, x: 1 });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Không có bề mặt đỡ');
+  });
+
   it('normalizes quarter-turn rotations into axis-aligned dimension swaps', () => {
     const draft = createPlacementDraft(selected);
 

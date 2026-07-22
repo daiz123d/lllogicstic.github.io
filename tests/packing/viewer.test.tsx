@@ -85,6 +85,6 @@ describe('PackingViewer', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Container 2' }));
     expect(screen.queryByRole('button', { name: /kiện sau/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/Đã xếp 0 \/ 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Đã xếp 1 \/ 2/i)).toBeInTheDocument();
   });
 });

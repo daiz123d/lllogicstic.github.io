@@ -1,9 +1,10 @@
 'use client';
 
 import { Box, Expand, Map } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
-import type { PackedContainer, Placement } from '@/lib/packing/types';
+import type { Leftover, PackedContainer, Placement } from '@/lib/packing/types';
 import { createPlacementDraft, toPlacementOverride, validatePlacementDraft } from '@/lib/packing/manual-layout';
 import type { ManualAxis, ManualSnap, ManualTransformMode, PlacementDraft } from '@/lib/packing/manual-layout';
 
@@ -19,11 +20,28 @@ type ViewerProps = {
   selectedPlacementId: string | null;
   onSelectPlacement: (placementId: string) => void;
   step: number;
+  leftovers?: Leftover[];
   reducedMotion?: boolean;
   focusToken?: string;
   onRequestFocus?: (key: string) => void;
   onApplyPlacementOverride?: (placementId: string, override: ReturnType<typeof toPlacementOverride>) => void;
 };
+
+export class SceneErrorBoundary extends Component<{ children: ReactNode; onError: () => void }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch() {
+    this.props.onError();
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 export function placementKey(containerId: string, placement: Placement) {
   return `${containerId}:${placement.order}`;
@@ -76,7 +94,7 @@ export function getCargoFocus(container: PackedContainer, placements: Placement[
   return { target, span: Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, Math.max(width, height, length) * .45) };
 }
 
-function PlanView({ container, placements, selectedPlacementId, onSelectPlacement }: {
+export function PlanView({ container, placements, selectedPlacementId, onSelectPlacement }: {
   container: PackedContainer;
   placements: Placement[];
   selectedPlacementId: string | null;
@@ -94,11 +112,20 @@ function PlanView({ container, placements, selectedPlacementId, onSelectPlacemen
   </div>;
 }
 
-export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, reducedMotion = false, focusToken = 'fit:0', onRequestFocus = () => {}, onApplyPlacementOverride = () => {} }: ViewerProps) {
+export function hasWebglSupport(documentObject: Pick<Document, 'createElement'>) {
+  try {
+    const canvas = documentObject.createElement('canvas');
+    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
+export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step, leftovers = [], reducedMotion = false, focusToken = 'fit:0', onRequestFocus = () => {}, onApplyPlacementOverride = () => {} }: ViewerProps) {
   const [mode, setMode] = useState<'3d' | '2d'>('3d');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [preset, setPreset] = useState<ViewPreset>('iso');
-  const [viewportLayout, setViewportLayout] = useState<ViewportLayout>('single');
+  const [viewportLayout, setViewportLayout] = useState<ViewportLayout>('pip');
   const [collapsedPip, setCollapsedPip] = useState<ViewPreset[]>([]);
   const [renderMode, setRenderMode] = useState<RenderMode>('solid');
   const [shell, setShell] = useState<ShellVisibility>({ all: true, left: true, right: true, roof: true, front: false });
@@ -109,17 +136,34 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
   const [manualSnap, setManualSnap] = useState<ManualSnap>(.01);
   const [manualDraftState, setManualDraftState] = useState<{ key: string; draft: PlacementDraft } | null>(null);
   const [manualOverride, setManualOverride] = useState(false);
+  const [webglStatus, setWebglStatus] = useState<'checking' | 'supported' | 'unsupported'>('checking');
   const viewerRef = useRef<HTMLElement>(null);
-  const supportsWebgl = useMemo(() => typeof window !== 'undefined' && 'WebGLRenderingContext' in window, []);
   const usedContainers = packedContainers.filter((item) => item.packed.length > 0);
+  const supportsWebgl = webglStatus === 'supported';
+  const handleRenderingFailure = useCallback(() => setWebglStatus('unsupported'), []);
+  useEffect(() => {
+    setWebglStatus(hasWebglSupport(document) ? 'supported' : 'unsupported');
+  }, []);
   useEffect(() => {
     const selectedContainer = usedContainers.find((item) => selectedPlacementId?.startsWith(`${item.container.id}:`));
     if (selectedContainer) setActiveId(selectedContainer.container.id);
   }, [packedContainers, selectedPlacementId]);
   const active = usedContainers.find((item) => item.container.id === activeId) ?? usedContainers[0];
-  const visiblePlacements = useMemo(() => active ? active.packed.slice(0, getVisiblePlacementCount(packedContainers, active.container.id, step)) : [], [active, packedContainers, step]);
+  const visibleCount = active ? getVisiblePlacementCount(packedContainers, active.container.id, step) : 0;
+  const visiblePlacements = useMemo(() => active ? active.packed.slice(0, visibleCount) : [], [active, visibleCount]);
+  const playbackState = active ? {
+    visibleCount,
+    enteringPlacementId: visibleCount > 0 ? placementKey(active.container.id, active.packed[visibleCount - 1]) : null,
+    nextPlacement: active.packed[visibleCount] ?? null,
+  } : undefined;
   const insights = active ? getPackingInsights(active) : null;
-  const metrics = active ? getViewerMetrics(active, visiblePlacements.length) : null;
+  const globalPackedTotal = packedContainers.reduce((total, packedContainer) => total + packedContainer.packed.length, 0);
+  const activeMetrics = active ? getViewerMetrics(active, visiblePlacements.length) : null;
+  const metrics = activeMetrics ? {
+    ...activeMetrics,
+    packed: clamp(step, 0, globalPackedTotal),
+    total: globalPackedTotal + leftovers.length,
+  } : null;
   const selected = active ? visiblePlacements.find((placement) => placementKey(active.container.id, placement) === selectedPlacementId) ?? null : null;
   const manualDraft = manualDraftState?.key === selectedPlacementId ? manualDraftState.draft : null;
   const manualValidation = useMemo(() => active && selected && manualDraft
@@ -176,7 +220,7 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
 
   return <section className="viewer-panel" aria-label="Hybrid Isometric Cutaway" ref={viewerRef}>
     <div className="viewer-toolbar"><div><p className="section-kicker">KHÔNG GIAN XẾP</p><h2>{active?.container.name ?? 'Chưa có phương án'}</h2>{insights && <div className="viewer-metrics" aria-label="Chỉ số xếp hàng"><span>{insights.count} kiện</span><span>Lấp đầy {insights.fillPercentage.toFixed(1)}%</span>{insights.floorOnlyCount > 0 && <span className="floor-only-metric">{insights.floorOnlyCount} kiện nằm sàn</span>}</div>}</div><div className="view-toggle" role="group" aria-label="Chế độ xem"><button type="button" aria-pressed={mode === '3d'} className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}><Box size={15} aria-hidden="true" />3D</button><button type="button" aria-pressed={mode === '2d'} className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}><Map size={15} aria-hidden="true" />Mặt bằng</button></div></div>
-    {metrics && <ViewerControls mode={renderMode} shell={shell} preset={preset} metrics={metrics} selected={selected} unpacked={active?.unpacked ?? []} observationDisabled={manualEditing} onModeChange={(nextMode) => { if (!manualEditing) setRenderMode(nextMode); }} onShellChange={setShell} onPresetChange={selectPreset} onFit={() => onRequestFocus('fit')} />}
+    {metrics && <ViewerControls mode={renderMode} shell={shell} preset={preset} metrics={metrics} selected={selected} leftovers={leftovers} observationDisabled={manualEditing} onModeChange={(nextMode) => { if (!manualEditing) setRenderMode(nextMode); }} onShellChange={setShell} onPresetChange={selectPreset} onFit={() => onRequestFocus('fit')} />}
     {active && <ViewerManualControls enabled={manualEditing} selectedKey={selectedPlacementId} selected={manualDraft} validation={manualValidation} override={manualOverride} mode={manualMode} axis={manualAxis} snap={manualSnap} onEnabledChange={updateManualEditing} onModeChange={setManualMode} onAxisChange={setManualAxis} onSnapChange={setManualSnap} onDraftChange={updateManualDraft} onOverrideChange={setManualOverride} onApply={applyManualDraft} onCancel={cancelManualDraft} />}
     <div className="simulation-toolbar viewport-layout-controls" role="group" aria-label="Bố cục khung nhìn">
       {([['single', 'Single View'], ['pip', 'PIP'], ['quad', 'Quad View']] as const).map(([layout, label]) => <button key={layout} type="button" aria-pressed={viewportLayout === layout} className={viewportLayout === layout ? 'active' : ''} onClick={() => selectLayout(layout)}>{label}</button>)}
@@ -188,7 +232,11 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     {active && mode === '2d' && <PlanView container={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} onSelectPlacement={onSelectPlacement} />}
     {active && mode === '3d' && renderMode === 'exploded' && <div className="viewer-observation-warning" role="status">Chế độ quan sát – không phải vị trí thực tế</div>}
     {active && mode === '3d' && renderMode === 'space' && <div className="viewer-mode-status" role="status" aria-live="polite" aria-label="Thể tích chưa sử dụng">Khoảng trống · Thể tích chưa sử dụng</div>}
-    {active && mode === '3d' && supportsWebgl && <ViewerViewports layout={viewportLayout} mainPreset={preset} collapsedPip={collapsedPip} sceneProps={{ packedContainer: active, placements: visiblePlacements, selectedPlacementId, hoveredPlacementId, mode: renderMode, shell, focusToken, reducedMotion, emptyRegions, manualEditing, manualDraft, manualValidation, manualMode, manualAxis, manualSnap, onManualDraftChange: updateManualDraft, onSelectPlacement, onHoverPlacement: setHoveredPlacementId, onRequestFocus }} onMainPresetChange={selectPreset} onTogglePip={togglePip} />}
-    {active && mode === '3d' && !supportsWebgl && <div className="viewer-empty" role="status" aria-live="polite">Thiết bị này chưa hỗ trợ WebGL. Hãy dùng “Mặt bằng” để xem phương án xếp.</div>}
+    {active && mode === '3d' && supportsWebgl && <SceneErrorBoundary onError={handleRenderingFailure}><ViewerViewports layout={viewportLayout} mainPreset={preset} collapsedPip={collapsedPip} sceneProps={{ packedContainer: active, placements: visiblePlacements, selectedPlacementId, hoveredPlacementId, mode: renderMode, shell, focusToken, reducedMotion, emptyRegions, playbackState, manualEditing, manualDraft, manualValidation, manualMode, manualAxis, manualSnap, onManualDraftChange: updateManualDraft, onSelectPlacement, onHoverPlacement: setHoveredPlacementId, onRequestFocus, onRenderingFailure: handleRenderingFailure }} onMainPresetChange={selectPreset} onTogglePip={togglePip} /></SceneErrorBoundary>}
+    {active && mode === '3d' && webglStatus === 'checking' && <div className="viewer-empty" role="status" aria-live="polite">Đang kiểm tra hỗ trợ WebGL…</div>}
+    {active && mode === '3d' && webglStatus === 'unsupported' && <div className="viewer-fallback">
+      <div className="viewer-mode-status" role="status" aria-live="polite">Thiết bị này chưa hỗ trợ WebGL. Đang hiển thị mặt bằng 2D.</div>
+      <PlanView container={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} onSelectPlacement={onSelectPlacement} />
+    </div>}
   </section>;
 }

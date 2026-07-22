@@ -150,12 +150,12 @@ export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, 
     <div className="pip-stack">
       {visiblePipPresets.map((preset, index) => collapsedPip.includes(preset)
         ? <button key={`${preset}-${index}`} type="button" className="pip-restore" onClick={() => onTogglePip(preset)}>Mở {PRESET_LABELS[preset]} PIP</button>
-        : <section key={`${preset}-${index}`} className="packing-viewport viewport-pip-panel" aria-label={`${PRESET_LABELS[preset]} viewport PIP`}>
+        : <section key={`${preset}-${index}`} className="packing-viewport viewport-pip-panel" aria-label={`${PRESET_LABELS[preset]} viewport PIP`} onClick={(event) => { if (event.target === event.currentTarget) activatePip(index); }}>
             <div className="pip-actions">
               <button type="button" onClick={() => activatePip(index)}>Dùng {PRESET_LABELS[preset]} làm khung chính</button>
               <button type="button" aria-label={`Thu gọn ${PRESET_LABELS[preset]}`} onClick={() => onTogglePip(preset)}>−</button>
             </div>
-            <ContainerScene {...sceneProps} preset={preset} showLabels={false} manualEditing={false} />
+            <ContainerScene {...sceneProps} preset={preset} showLabels={false} manualEditing={false} onBackgroundClick={() => activatePip(index)} />
           </section>)}
     </div>
   </div>;

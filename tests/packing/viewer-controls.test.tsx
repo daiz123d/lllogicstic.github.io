@@ -24,7 +24,7 @@ const placement: Placement = {
 afterEach(cleanup);
 
 it('shows complete HUD metrics and selected coordinates', () => {
-  render(<ViewerHud metrics={metrics} selected={placement} unpacked={[]} />);
+  render(<ViewerHud metrics={metrics} selected={placement} leftovers={[]} />);
 
   expect(screen.getByText('Thể tích 6.3%')).toBeInTheDocument();
   expect(screen.getByText('Tải trọng 100 / 4.800 kg')).toBeInTheDocument();
@@ -32,7 +32,7 @@ it('shows complete HUD metrics and selected coordinates', () => {
 });
 
 it('announces only the changing packed count instead of the complete HUD', () => {
-  render(<ViewerHud metrics={metrics} selected={placement} unpacked={[]} />);
+  render(<ViewerHud metrics={metrics} selected={placement} leftovers={[]} />);
 
   expect(screen.getByLabelText('Chỉ số mô phỏng')).not.toHaveAttribute('aria-live');
   expect(screen.getByText('Đã xếp 1 / 2 kiện')).toHaveAttribute('aria-live', 'polite');
@@ -47,7 +47,7 @@ it('exposes pressed view controls and checked shell controls', () => {
     preset="iso"
     metrics={metrics}
     selected={placement}
-    unpacked={[]}
+    leftovers={[]}
     onModeChange={onModeChange}
     onShellChange={() => {}}
     onPresetChange={() => {}}

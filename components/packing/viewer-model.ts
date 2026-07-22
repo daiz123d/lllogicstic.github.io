@@ -11,7 +11,6 @@ const MAX_EMPTY_REGIONS = 256;
 
 export function getCameraFrame(bounds: ContainerBounds, preset: ViewPreset, viewportWidth: number, viewportHeight: number): CameraFrame {
   const target: [number, number, number] = [bounds.width / 2, bounds.height / 2, bounds.length / 2];
-  const aspect = Math.max(viewportWidth, 1) / Math.max(viewportHeight, 1);
   const elevationRadians = ELEVATION * Math.PI / 180;
   const horizontalProjection = Math.SQRT1_2 * (bounds.width + bounds.length);
   const verticalProjection = Math.SQRT1_2 * Math.sin(elevationRadians) * (bounds.width + bounds.length) + Math.cos(elevationRadians) * bounds.height;
@@ -22,7 +21,10 @@ export function getCameraFrame(bounds: ContainerBounds, preset: ViewPreset, view
       : preset === 'front'
         ? { width: bounds.width, height: bounds.height }
         : { width: bounds.length, height: bounds.height };
-  const zoom = COVERAGE / Math.max(projected.width / aspect, projected.height, Number.EPSILON);
+  const zoom = Math.min(
+    COVERAGE * Math.max(viewportWidth, 1) / Math.max(projected.width, Number.EPSILON),
+    COVERAGE * Math.max(viewportHeight, 1) / Math.max(projected.height, Number.EPSILON),
+  );
   const distance = Math.max(bounds.width, bounds.height, bounds.length, 1) * 2;
   const isoHorizontalOffset = distance * Math.cos(elevationRadians) * Math.SQRT1_2;
   const position: [number, number, number] = preset === 'iso'

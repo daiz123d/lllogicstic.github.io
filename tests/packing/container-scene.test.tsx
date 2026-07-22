@@ -1,8 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ContainerScene, getDoorOpenAngle, getManualDraftRenderPosition, getPlacementDraftFromSceneTransform, getPlacementEntryRenderPosition, getPlacementRenderColor, getShellMaterialProps, isFrontDoorVisible } from '@/components/packing/container-scene';
+import { ContainerScene, getDoorOpenAngle, getManualDraftRenderPosition, getPlacementDraftFromSceneTransform, getPlacementEntryRenderPosition, getPlacementRenderColor, getShellMaterialProps, isFrontDoorVisible, watchWebglContextLoss } from '@/components/packing/container-scene';
 import { createPlacementDraft } from '@/lib/packing/manual-layout';
 import { PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
@@ -20,7 +20,7 @@ vi.mock('@react-three/fiber', () => ({
 
 vi.mock('@react-three/drei', () => ({
   ContactShadows: () => null,
-  Edges: () => null,
+  Edges: ({ color }: { color: string }) => <i data-edge-color={color} />,
   Html: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   OrbitControls: () => null,
   OrthographicCamera: () => null,
@@ -44,9 +44,24 @@ afterEach(() => {
   threeSpies.positionSet.mockClear();
   threeSpies.zoomSet.mockClear();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('ContainerScene viewer contract', () => {
+  it('reports a lost WebGL context once and prevents the browser default', () => {
+    const canvas = document.createElement('canvas');
+    const onFailure = vi.fn();
+    const stopWatching = watchWebglContextLoss(canvas, onFailure);
+    const contextLost = new Event('webglcontextlost', { cancelable: true });
+
+    canvas.dispatchEvent(contextLost);
+    canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
+
+    expect(contextLost.defaultPrevented).toBe(true);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    stopWatching();
+  });
+
   it('keeps exploded presentation Y out of an X-only manual draft nudge', () => {
     const upperPlacement = { ...packedContainer.packed[0], id: 'box-2', order: 2, y: 1, width: 1, height: 1, length: 2 };
     const stackedContainer = { ...packedContainer, packed: [packedContainer.packed[0], upperPlacement] };
@@ -250,14 +265,112 @@ describe('ContainerScene viewer contract', () => {
     expect(getPlacementRenderColor(packedContainer, lightweightPlacements, lightweightPlacements[1], 'weight')).toBe('#ef4444');
   });
 
-  it('keeps the landing position and closed doors when motion is reduced or the front layer is off', () => {
+  it('keeps the landing position and respects front-door visibility', () => {
     const target: [number, number, number] = [-.5, .5, -1.5];
 
     expect(getPlacementEntryRenderPosition(packedContainer, packedContainer.packed[0], target, 1)).toEqual(target);
     expect(isFrontDoorVisible({ all: true, left: true, right: true, roof: true, front: false })).toBe(false);
     expect(isFrontDoorVisible({ all: true, left: true, right: true, roof: true, front: true })).toBe(true);
     expect(getDoorOpenAngle(0)).toBe(0);
-    expect(getDoorOpenAngle(350 / 450)).toBeCloseTo(.82);
+    expect(getDoorOpenAngle(1)).toBeCloseTo(.82);
+  });
+
+  it('opens the front doors once at the first visible placement and keeps them open above zero', () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const secondPlacement = { ...packedContainer.packed[0], id: 'box-2', order: 2, z: 1 };
+    const fullContainer = { ...packedContainer, packed: [packedContainer.packed[0], secondPlacement] };
+    const baseProps = {
+      packedContainer: fullContainer,
+      selectedPlacementId: null,
+      hoveredPlacementId: null,
+      preset: 'iso' as const,
+      mode: 'solid' as const,
+      shell: { all: true, left: true, right: true, roof: true, front: true },
+      focusToken: 'fit:0',
+      onSelectPlacement: () => {},
+      onHoverPlacement: () => {},
+      onRequestFocus: () => {},
+    };
+    const { container, rerender } = render(<ContainerScene {...baseProps} placements={[]} playbackState={{ visibleCount: 0, enteringPlacementId: null, nextPlacement: fullContainer.packed[0] }} />);
+
+    expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', '0,0,0');
+
+    rerender(<ContainerScene {...baseProps} placements={[fullContainer.packed[0]]} playbackState={{ visibleCount: 1, enteringPlacementId: 'container-1:1', nextPlacement: secondPlacement }} />);
+    const afterAnimation = performance.now() + 1_000;
+    act(() => callbacks.splice(0).forEach((callback) => callback(afterAnimation)));
+    expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', `0,${getDoorOpenAngle(1)},0`);
+
+    rerender(<ContainerScene {...baseProps} placements={fullContainer.packed} playbackState={{ visibleCount: 2, enteringPlacementId: 'container-1:2', nextPlacement: null }} />);
+    expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', `0,${getDoorOpenAngle(1)},0`);
+
+    rerender(<ContainerScene {...baseProps} placements={[fullContainer.packed[0]]} playbackState={{ visibleCount: 1, enteringPlacementId: 'container-1:1', nextPlacement: secondPlacement }} />);
+    expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', `0,${getDoorOpenAngle(1)},0`);
+
+    rerender(<ContainerScene {...baseProps} placements={[]} playbackState={{ visibleCount: 0, enteringPlacementId: null, nextPlacement: fullContainer.packed[0] }} />);
+    expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', '0,0,0');
+  });
+
+  it('renders an explicit cyan next outline distinct from selected, hovered and ordinary edges', () => {
+    const selectedPlacement = packedContainer.packed[0];
+    const hoveredPlacement = { ...selectedPlacement, id: 'box-2', order: 2, x: 1 };
+    const ordinaryPlacement = { ...selectedPlacement, id: 'box-3', order: 3, z: 1 };
+    const nextPlacement = { ...selectedPlacement, id: 'box-4', order: 4, x: 1, z: 1 };
+    const outlineContainer = { ...packedContainer, packed: [selectedPlacement, hoveredPlacement, ordinaryPlacement, nextPlacement] };
+    const { container } = render(<ContainerScene
+      packedContainer={outlineContainer}
+      placements={[selectedPlacement, hoveredPlacement, ordinaryPlacement]}
+      playbackState={{ visibleCount: 3, enteringPlacementId: null, nextPlacement }}
+      selectedPlacementId="container-1:1"
+      hoveredPlacementId="container-1:2"
+      preset="iso"
+      mode="solid"
+      shell={{ all: true, left: true, right: true, roof: true, front: false }}
+      focusToken="fit:0"
+      reducedMotion
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    />);
+
+    expect(container.querySelector('[name="placement-container-1:1-selected"] i')).toHaveAttribute('data-edge-color', '#fbbf24');
+    expect(container.querySelector('[name="placement-container-1:2-idle"] i')).toHaveAttribute('data-edge-color', '#a5f3fc');
+    expect(container.querySelector('[name="placement-container-1:3-idle"] i')).toHaveAttribute('data-edge-color', '#164e63');
+    expect(container.querySelector('[name="playback-next-container-1:4"] i')).toHaveAttribute('data-edge-color', '#22d3ee');
+  });
+
+  it('removes the cyan entering outline after the landing glow ends', () => {
+    vi.useFakeTimers();
+    let animationFrame: FrameRequestCallback | undefined;
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      animationFrame = callback;
+      return 1;
+    }));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const entryKey = 'container-1:1';
+    const { container } = render(<ContainerScene
+      packedContainer={packedContainer}
+      placements={packedContainer.packed}
+      playbackState={{ visibleCount: 1, enteringPlacementId: entryKey, nextPlacement: null }}
+      selectedPlacementId={null}
+      hoveredPlacementId={null}
+      preset="iso"
+      mode="solid"
+      shell={{ all: true, left: true, right: true, roof: true, front: false }}
+      focusToken="fit:0"
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    />);
+
+    expect(container.querySelector('[name="placement-container-1:1-idle"] i')).toHaveAttribute('data-edge-color', '#22d3ee');
+    act(() => animationFrame?.(450));
+    act(() => vi.advanceTimersByTime(240));
+    expect(container.querySelector('[name="placement-container-1:1-idle"] i')).toHaveAttribute('data-edge-color', '#164e63');
   });
 
   it('skips entry animation frames when reduced motion is enabled', () => {
@@ -265,7 +378,7 @@ describe('ContainerScene viewer contract', () => {
     vi.stubGlobal('requestAnimationFrame', requestAnimationFrame);
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
 
-    render(<ContainerScene
+    const { container } = render(<ContainerScene
       packedContainer={packedContainer}
       placements={packedContainer.packed}
       selectedPlacementId={null}
@@ -281,5 +394,6 @@ describe('ContainerScene viewer contract', () => {
     />);
 
     expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(container.querySelector('[name="front-door-right"]')).toHaveAttribute('rotation', `0,${getDoorOpenAngle(1)},0`);
   });
 });

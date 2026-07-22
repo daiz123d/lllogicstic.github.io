@@ -83,22 +83,30 @@ export function validatePlacementDraft(
   selected: Placement,
   draft: PlacementOverride,
 ): PlacementValidation {
-  const normalizedPlacements = placements.map((placement) => ({
-    ...placement,
-    id: undefined,
-    boxKey: keyFor(container.id, placement),
-  }));
+  const selectedKey = keyFor(container.id, selected);
   const candidate = {
     ...selected,
     ...draft,
     id: undefined,
-    boxKey: keyFor(container.id, selected),
+    boxKey: selectedKey,
   };
-  const validation = validateManualPlacement(container, normalizedPlacements, candidate) as { valid: boolean; errors?: string[] };
+  const prospectivePlacements = placements.map((placement) => {
+    const boxKey = keyFor(container.id, placement);
+    return {
+      ...(boxKey === selectedKey ? { ...placement, ...draft } : placement),
+      id: undefined,
+      boxKey,
+    };
+  });
+  if (!prospectivePlacements.some(({ boxKey }) => boxKey === selectedKey)) prospectivePlacements.push(candidate);
+  const errors = prospectivePlacements.flatMap((placement) => {
+    const validation = validateManualPlacement(container, prospectivePlacements, placement) as { errors?: string[] };
+    return validation.errors ?? [];
+  });
 
   return {
-    valid: validation.valid,
-    errors: (validation.errors ?? []).map((error) => errorLabels[error] ?? error),
+    valid: errors.length === 0,
+    errors: Array.from(new Set(errors.map((error) => errorLabels[error] ?? error))),
   };
 }
 

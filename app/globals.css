@@ -65,6 +65,7 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 .viewer-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .viewer-metrics span { display: inline-flex; align-items: center; min-height: 21px; padding: 0 6px; border: 1px solid var(--port-line); border-radius: 4px; color: var(--port-muted); background: rgba(7, 19, 31, .45); font-size: .6rem; font-weight: 700; }
 .viewer-metrics .floor-only-metric { border-color: rgba(251, 191, 36, .45); color: var(--port-amber); background: rgba(251, 191, 36, .08); }
+.viewer-metrics .leftover-status.gray { color: var(--port-muted); }.viewer-metrics .leftover-status.coral, .viewer-metrics .viewer-leftover-warning { border-color: rgba(251, 113, 133, .48); color: var(--port-coral); background: rgba(251, 113, 133, .08); }.viewer-leftover-warnings { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 6px; }
 .scene-floor-only { display: inline-flex; align-items: center; min-height: 17px; padding: 0 5px; border: 1px solid rgba(251, 191, 36, .75); border-radius: 3px; color: #241800; background: var(--port-amber); box-shadow: 0 2px 6px rgba(0, 0, 0, .45); font: 800 9px/1 "Be Vietnam Pro", sans-serif; letter-spacing: .08em; }
 .packing-result-table { margin: 0 12px 12px; overflow: hidden; border: 1px solid var(--port-line); border-radius: 7px; background: #091826; }
 .result-table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 11px; border-bottom: 1px solid var(--port-line); }
@@ -97,7 +98,7 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 .viewport-single { height: 405px; }
 .viewport-single .packing-viewport { height: 100%; border: 0; }
 .viewport-pip { position: relative; min-height: 440px; padding: 8px; }
-.viewport-main { width: 100%; min-height: 424px; }
+.viewport-main { z-index: 1; width: 100%; min-height: 424px; }
 .pip-stack { position: absolute; z-index: 3; top: 16px; right: 16px; bottom: 16px; display: grid; width: clamp(150px, 24%, 220px); min-height: 0; grid-template-rows: repeat(2, minmax(0, 1fr)); align-content: stretch; gap: 8px; }
 .viewport-pip-panel { min-height: 0; box-shadow: 0 8px 24px rgba(0, 0, 0, .36); }
 .pip-actions { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }

@@ -35,6 +35,15 @@ export type ContainerSceneProps = {
   onSelectPlacement: (key: string) => void;
   onHoverPlacement: (key: string | null) => void;
   onRequestFocus: (key: string) => void;
+  onBackgroundClick?: () => void;
+  onRenderingFailure?: () => void;
+  playbackState?: PlaybackVisualState;
+};
+
+export type PlaybackVisualState = {
+  visibleCount: number;
+  enteringPlacementId: string | null;
+  nextPlacement: Placement | null;
 };
 
 type CameraControllerProps = Pick<ContainerSceneProps, 'preset' | 'focusToken' | 'packedContainer' | 'mode'> & {
@@ -133,21 +142,63 @@ function useEntryAnimation(entryKey: string | undefined, reducedMotion: boolean)
 }
 
 export function getDoorOpenAngle(openProgress: number) {
-  return easeOutCubic(Math.min(1, Math.max(0, openProgress) * 450 / 350)) * .82;
+  return easeOutCubic(Math.min(1, Math.max(0, openProgress))) * .82;
 }
 
 export function isFrontDoorVisible(shell: ShellVisibility) {
   return shell.all && shell.front;
 }
 
+export function watchWebglContextLoss(canvas: HTMLCanvasElement, onFailure: () => void) {
+  const handleContextLoss = (event: Event) => {
+    event.preventDefault();
+    onFailure();
+  };
+  canvas.addEventListener('webglcontextlost', handleContextLoss, { once: true });
+  return () => canvas.removeEventListener('webglcontextlost', handleContextLoss);
+}
+
+function useDoorOpenProgress(visibleCount: number, reducedMotion: boolean) {
+  const shouldOpen = visibleCount > 0;
+  const previouslyOpen = useRef(shouldOpen);
+  const [progress, setProgress] = useState(shouldOpen ? 1 : 0);
+
+  useEffect(() => {
+    const wasOpen = previouslyOpen.current;
+    previouslyOpen.current = shouldOpen;
+    if (!shouldOpen) {
+      setProgress(0);
+      return;
+    }
+    if (reducedMotion) {
+      setProgress(1);
+      return;
+    }
+    if (wasOpen) return;
+
+    setProgress(0);
+    const startedAt = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const nextProgress = Math.min(1, Math.max(0, (now - startedAt) / 350));
+      setProgress(nextProgress);
+      if (nextProgress < 1) frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frame);
+  }, [reducedMotion, shouldOpen]);
+
+  return reducedMotion ? shouldOpen ? 1 : 0 : progress;
+}
+
 function DoorPanels({ width, height, openProgress, mode }: { width: number; height: number; openProgress: number; mode: RenderMode }) {
   const angle = getDoorOpenAngle(openProgress);
 
   return <group>
-    <group position={[-width / 2, height / 2, 0]} rotation={[0, -angle, 0]}>
+    <group name="front-door-left" position={[-width / 2, height / 2, 0]} rotation={[0, -angle, 0]}>
       <mesh position={[width / 4, 0, 0]}><boxGeometry args={[width / 2, height, .05]} /><meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'front')} /></mesh>
     </group>
-    <group position={[width / 2, height / 2, 0]} rotation={[0, angle, 0]}>
+    <group name="front-door-right" position={[width / 2, height / 2, 0]} rotation={[0, angle, 0]}>
       <mesh position={[-width / 4, 0, 0]}><boxGeometry args={[width / 2, height, .05]} /><meshStandardMaterial color="#164764" roughness={.88} {...getShellMaterialProps(mode, 'front')} /></mesh>
     </group>
   </group>;
@@ -248,13 +299,13 @@ export function getPlacementDraftFromSceneTransform(
   };
 }
 
-function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, mode, showLabels, manualEditing = false, manualDraft = null, manualValidation = { valid: true, errors: [] }, manualMode = 'translate', manualAxis = 'X', manualSnap = .01, onManualDraftChange = () => {}, entry, onSelectPlacement, onHoverPlacement, onRequestFocus }: Omit<ContainerSceneProps, 'preset' | 'shell' | 'focusToken' | 'reducedMotion'> & { entry: EntryAnimation }) {
+function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, mode, showLabels, manualEditing = false, manualDraft = null, manualValidation = { valid: true, errors: [] }, manualMode = 'translate', manualAxis = 'X', manualSnap = .01, onManualDraftChange = () => {}, entry, playbackState, onSelectPlacement, onHoverPlacement, onRequestFocus }: Omit<ContainerSceneProps, 'preset' | 'shell' | 'focusToken' | 'reducedMotion'> & { entry: EntryAnimation }) {
   const xray = mode === 'xray';
   const wireframe = mode === 'wireframe';
   const selectedGroup = useRef<Group>(null!);
   const layerLevels = useMemo(() => [...new Set(placements.map((item) => item.y))].sort((a, b) => a - b), [placements]);
   const maximumWeight = useMemo(() => Math.max(Number.EPSILON, ...placements.map((item) => item.weight).filter((weight) => weight > 0)), [placements]);
-  const entryPlacement = placements.at(-1);
+  const entryPlacement = placements.find((placement) => placementKey(packedContainer.container.id, placement) === playbackState?.enteringPlacementId) ?? placements.at(-1);
   const editablePlacement = placements.find((placement) => placementKey(packedContainer.container.id, placement) === selectedPlacementId);
 
   function updateManualDraft() {
@@ -299,7 +350,7 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
             emissive={selected ? '#f59e0b' : moving || (entering && entry.landing) ? '#22d3ee' : hovered ? '#67e8f9' : '#000000'}
             emissiveIntensity={selected ? .35 : moving ? .22 : entering && entry.landing ? .48 : hovered ? .16 : 0}
           />
-          <Edges color={selected ? '#fbbf24' : hovered ? '#a5f3fc' : '#164e63'} lineWidth={1} />
+          <Edges color={selected ? '#fbbf24' : hovered ? '#a5f3fc' : entering && (moving || entry.landing) ? '#22d3ee' : '#164e63'} lineWidth={1} />
         </mesh>
         {showLabels && <Html center distanceFactor={8}><span className={selected ? 'scene-label selected' : 'scene-label'}>{placement.order}</span></Html>}
         {hovered && <Html position={[0, displayedPlacement.height / 2 + .28, 0]} center distanceFactor={8}><span role="tooltip" className="scene-floor-only">{placement.label} · D {displayedPlacement.length.toFixed(2)} × R {displayedPlacement.width.toFixed(2)} × C {displayedPlacement.height.toFixed(2)} · {placement.weight.toFixed(1)} kg</span></Html>}
@@ -307,6 +358,18 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
         {!placement.stackable && <Html position={[0, placement.height / 2 + .22, 0]} center distanceFactor={8}><span className="scene-floor-only">SÀN</span></Html>}
       </group>;
     })}
+    {playbackState?.nextPlacement && (() => {
+      const nextPlacement = playbackState.nextPlacement;
+      const key = placementKey(packedContainer.container.id, nextPlacement);
+      const target = getPlacementRenderPosition(packedContainer, [...placements, nextPlacement], nextPlacement, mode);
+      return <group name={`playback-next-${key}`} position={getPlacementEntryRenderPosition(packedContainer, nextPlacement, target, 0)}>
+        <mesh>
+          <boxGeometry args={[nextPlacement.width, nextPlacement.height, nextPlacement.length]} />
+          <meshBasicMaterial color="#22d3ee" transparent opacity={0} depthWrite={false} />
+          <Edges color="#22d3ee" lineWidth={2} />
+        </mesh>
+      </group>;
+    })()}
     {manualEditing && editablePlacement && manualDraft && <TransformControls
       object={selectedGroup}
       mode={manualMode}
@@ -336,24 +399,35 @@ function EmptyRegions({ packedContainer, regions }: { packedContainer: PackedCon
   </group>;
 }
 
-export function ContainerScene({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, preset, mode, shell, focusToken, reducedMotion = false, emptyRegions: sharedEmptyRegions, showLabels = true, manualEditing = false, manualDraft = null, manualValidation, manualMode, manualAxis, manualSnap, onManualDraftChange, onSelectPlacement, onHoverPlacement, onRequestFocus }: ContainerSceneProps) {
+export function ContainerScene({ packedContainer, placements, selectedPlacementId, hoveredPlacementId, preset, mode, shell, focusToken, reducedMotion = false, emptyRegions: sharedEmptyRegions, showLabels = true, playbackState: playbackVisualState, manualEditing = false, manualDraft = null, manualValidation, manualMode, manualAxis, manualSnap, onManualDraftChange, onSelectPlacement, onHoverPlacement, onRequestFocus, onBackgroundClick, onRenderingFailure }: ContainerSceneProps) {
   const controls = useRef<OrbitControlsImpl>(null);
+  const contextLossCleanup = useRef<(() => void) | null>(null);
   const { width, height, length } = packedContainer.container;
   const emptyRegions = useMemo(() => {
     if (mode !== 'space') return [];
     return sharedEmptyRegions ?? getEmptyRegions({ ...packedContainer, packed: placements }, true);
   }, [mode, packedContainer, placements, sharedEmptyRegions]);
-  const entryPlacement = placements.at(-1);
-  const entry = useEntryAnimation(entryPlacement ? placementKey(packedContainer.container.id, entryPlacement) : undefined, reducedMotion);
+  const playbackState: PlaybackVisualState = playbackVisualState ?? {
+    visibleCount: placements.length,
+    enteringPlacementId: placements.length ? placementKey(packedContainer.container.id, placements.at(-1)!) : null,
+    nextPlacement: null,
+  };
+  const entry = useEntryAnimation(playbackState.enteringPlacementId ?? undefined, reducedMotion);
+  const doorOpenProgress = useDoorOpenProgress(playbackState.visibleCount, reducedMotion);
+
+  useEffect(() => () => contextLossCleanup.current?.(), []);
 
   return <div className="scene-canvas" data-empty-region-count={mode === 'space' ? emptyRegions.length : 0} onContextMenu={(event) => event.preventDefault()}>
-    <Canvas shadows dpr={[1, 2]}>
+    <Canvas shadows dpr={[1, 2]} onPointerMissed={onBackgroundClick} onCreated={({ gl }) => {
+      contextLossCleanup.current?.();
+      contextLossCleanup.current = onRenderingFailure ? watchWebglContextLoss(gl.domElement, onRenderingFailure) : null;
+    }}>
       <color attach="background" args={['#07131f']} />
       <OrthographicCamera makeDefault />
       <CameraController preset={preset} focusToken={focusToken} packedContainer={packedContainer} mode={mode} activeContainerId={packedContainer.container.id} controls={controls} />
       <hemisphereLight intensity={1.1} color="#d9f7ff" groundColor="#10283d" />
       <directionalLight castShadow intensity={1.8} position={[width, height * 2 + 3, length]} />
-      <Shell packedContainer={packedContainer} shell={shell} mode={mode} entryProgress={entry.active ? entry.progress : 0} />
+      <Shell packedContainer={packedContainer} shell={shell} mode={mode} entryProgress={doorOpenProgress} />
       <Cargo
         packedContainer={packedContainer}
         placements={placements}
@@ -361,6 +435,7 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
         hoveredPlacementId={hoveredPlacementId}
         mode={mode}
         entry={entry}
+        playbackState={playbackState}
         showLabels={showLabels}
         manualEditing={manualEditing}
         manualDraft={manualDraft}

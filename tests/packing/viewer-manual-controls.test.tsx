@@ -48,6 +48,10 @@ const callbacks = {
 
 beforeAll(() => {
   Object.defineProperty(window, 'WebGLRenderingContext', { configurable: true, value: class WebGLRenderingContext {} });
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: vi.fn((contextId: string) => contextId === 'webgl2' || contextId === 'webgl' ? {} : null),
+  });
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })) });
 });
 
@@ -132,6 +136,7 @@ describe('manual TransformControls integration', () => {
 
   it('mounts one gizmo only in the primary viewport in PIP', () => {
     render(<PackingViewer packedContainers={[packedContainer]} selectedPlacementId="container-1:1" onSelectPlacement={() => {}} onApplyPlacementOverride={() => {}} step={1} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Single View' }));
     fireEvent.click(screen.getByRole('button', { name: 'Chỉnh tay' }));
     dreiSpies.transformControls.mockClear();
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { OrthographicCamera, Vector3 } from 'three';
 
 import { getCameraFrame, getEmptyRegions, getHeatColor, getViewerMetrics } from '@/components/packing/viewer-model';
 import type { PackedContainer } from '@/lib/packing/types';
@@ -20,19 +21,38 @@ const packedContainer: PackedContainer = {
 };
 
 describe('viewer model', () => {
-  it('fits the container to 75 percent of an orthographic viewport', () => {
-    const longLandscape = getCameraFrame({ width: 2, height: 2, length: 10 }, 'iso', 1200, 700);
-    const longPortrait = getCameraFrame({ width: 2, height: 2, length: 10 }, 'iso', 700, 1200);
-    const compactLandscape = getCameraFrame({ width: 2, height: 2, length: 2 }, 'iso', 1200, 700);
-    const [targetX, targetY, targetZ] = longLandscape.target;
-    const [positionX, positionY, positionZ] = longLandscape.position;
+  it.each([
+    ['iso', 1200, 700],
+    ['iso', 700, 1200],
+    ['top', 1200, 700],
+    ['top', 700, 1200],
+    ['front', 1200, 700],
+    ['front', 700, 1200],
+    ['side', 1200, 700],
+    ['side', 700, 1200],
+  ] as const)('fits %s to 75 percent of Drei\'s default %sx%s pixel frustum', (preset, viewportWidth, viewportHeight) => {
+    const bounds = { width: 2, height: 2.5, length: 10 };
+    const frame = getCameraFrame(bounds, preset, viewportWidth, viewportHeight);
+    const camera = new OrthographicCamera(-viewportWidth / 2, viewportWidth / 2, viewportHeight / 2, -viewportHeight / 2, .1, 10_000);
+    camera.position.set(...frame.position);
+    camera.zoom = frame.zoom;
+    camera.lookAt(...frame.target);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+
+    const projectedCorners = [0, bounds.width].flatMap((x) => [0, bounds.height].flatMap((y) => [0, bounds.length].map((z) => new Vector3(x, y, z).project(camera))));
+    const visibleWidthFraction = (Math.max(...projectedCorners.map(({ x }) => x)) - Math.min(...projectedCorners.map(({ x }) => x))) / 2;
+    const visibleHeightFraction = (Math.max(...projectedCorners.map(({ y }) => y)) - Math.min(...projectedCorners.map(({ y }) => y))) / 2;
+    const [targetX, targetY, targetZ] = frame.target;
+    const [positionX, positionY, positionZ] = frame.position;
     const horizontalDistance = Math.hypot(positionX - targetX, positionZ - targetZ);
     const measuredElevation = Math.atan2(positionY - targetY, horizontalDistance) * 180 / Math.PI;
 
-    expect(longLandscape).toMatchObject({ coverage: .75, elevation: 32 });
-    expect(measuredElevation).toBeCloseTo(32, 6);
-    expect(longLandscape.zoom).toBeGreaterThan(longPortrait.zoom);
-    expect(compactLandscape.zoom).toBeGreaterThan(longLandscape.zoom);
+    expect(frame).toMatchObject({ coverage: .75, elevation: 32 });
+    if (preset === 'iso') expect(measuredElevation).toBeCloseTo(32, 6);
+    expect(visibleWidthFraction).toBeLessThanOrEqual(.751);
+    expect(visibleHeightFraction).toBeLessThanOrEqual(.751);
+    expect(Math.max(visibleWidthFraction, visibleHeightFraction)).toBeCloseTo(.75, 3);
   });
 
   it('computes volume, weight, packed and floor-only metrics', () => {

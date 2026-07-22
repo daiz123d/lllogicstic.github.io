@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
 import { useState } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { getPlacementRenderPosition } from '@/components/packing/container-scene';
-import { PackingViewer } from '@/components/packing/packing-viewer';
+import { PackingViewer, SceneErrorBoundary } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
 const modelSpies = vi.hoisted(() => ({
@@ -18,7 +19,7 @@ vi.mock('@/components/packing/viewer-model', async (importOriginal) => ({
 }));
 
 vi.mock('@react-three/fiber', () => ({
-  Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="scene-canvas">{children}</div>,
+  Canvas: ({ children, onPointerMissed }: { children: React.ReactNode; onPointerMissed?: () => void }) => <div data-testid="scene-canvas" onClick={onPointerMissed}>{children}</div>,
   useThree: () => ({
     camera: { position: { set: vi.fn() }, lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoom: 1 },
     size: { width: 1200, height: 700 },
@@ -63,11 +64,11 @@ function mockMobile(matches: boolean) {
 }
 
 function setWebglSupport(supported: boolean) {
-  if (supported) {
-    Object.defineProperty(window, 'WebGLRenderingContext', { configurable: true, value: class WebGLRenderingContext {} });
-  } else {
-    Reflect.deleteProperty(window, 'WebGLRenderingContext');
-  }
+  Reflect.deleteProperty(window, 'WebGLRenderingContext');
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: vi.fn((contextId: string) => supported && (contextId === 'webgl2' || contextId === 'webgl') ? {} : null),
+  });
 }
 
 beforeAll(() => {
@@ -82,13 +83,59 @@ afterEach(() => {
   setWebglSupport(true);
 });
 
-describe('ViewerViewports', () => {
-  it('switches between single, PIP and Quad View and only mounts enabled canvases', () => {
+describe('WebGL fallback', () => {
+  it('reports a scene render error to the viewer failure callback', () => {
+    const onError = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const BrokenScene = () => { throw new Error('scene failed'); };
+
+    render(<SceneErrorBoundary onError={onError}><BrokenScene /></SceneErrorBoundary>);
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
+  });
+
+  it('uses a hydration-stable checking state before client effects run', () => {
+    vi.stubGlobal('window', undefined);
+    try {
+      expect(renderToString(<PackingViewer packedContainers={[packedContainer]} selectedPlacementId={null} onSelectPlacement={() => {}} step={2} />)).toContain('Đang kiểm tra hỗ trợ WebGL');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('probes a real canvas context instead of trusting the WebGL constructor', () => {
+    setWebglSupport(true);
+
     renderViewer();
 
-    expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'PIP' }));
     expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(3);
+    expect(HTMLCanvasElement.prototype.getContext).toHaveBeenCalledWith('webgl2');
+  });
+
+  it('automatically shows the 2D plan and metrics after an unsupported probe', () => {
+    setWebglSupport(false);
+
+    renderViewer({ leftovers: [{ ...packedContainer.packed[0], label: 'Kiện dư thật', reason: 'oversize' }] });
+
+    expect(screen.getByRole('status')).toHaveTextContent('Thiết bị này chưa hỗ trợ WebGL');
+    expect(screen.getByLabelText('Sơ đồ xếp 2D')).toBeInTheDocument();
+    expect(screen.getByText('Thể tích 12.5%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cảnh báo kiện chưa xếp')).toHaveTextContent('Kiện dư thật: Quá kích thước');
+    expect(screen.queryByLabelText(/viewport/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('ViewerViewports', () => {
+  it('defaults desktop to PIP and switches to single or Quad View with only enabled canvases mounted', () => {
+    renderViewer();
+
+    expect(screen.getByRole('button', { name: 'PIP' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(3);
+    expect(screen.getByLabelText('Mặt trên viewport PIP')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mặt trước viewport PIP')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Single View' }));
+    expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Quad View' }));
 
     expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(4);
@@ -118,6 +165,23 @@ describe('ViewerViewports', () => {
 
     expect(screen.getByLabelText('Mặt trên viewport chính')).toBeInTheDocument();
     expect(screen.getByLabelText('Isometric viewport PIP')).toBeInTheDocument();
+  });
+
+  it('exchanges a clicked PIP panel without swallowing cargo selection', () => {
+    function SelectionHarness() {
+      const [selected, setSelected] = useState<string | null>(null);
+      return <PackingViewer packedContainers={[packedContainer]} selectedPlacementId={selected} onSelectPlacement={setSelected} step={2} />;
+    }
+    const { container } = render(<SelectionHarness />);
+    const topPanel = screen.getByLabelText('Mặt trên viewport PIP');
+
+    fireEvent.click(topPanel.querySelector('[data-testid="scene-canvas"]')!);
+
+    expect(screen.getByLabelText('Mặt trên viewport chính')).toBeInTheDocument();
+    const isoPanel = screen.getByLabelText('Isometric viewport PIP');
+    fireEvent.click(isoPanel.querySelector('group[name="placement-container-1:1-idle"] mesh')!);
+    expect(container.querySelectorAll('group[name="placement-container-1:1-selected"]')).toHaveLength(3);
+    expect(screen.getByLabelText('Mặt trên viewport chính')).toBeInTheDocument();
   });
 
   it.each([['Mặt trên', 'Mặt trước'], ['Mặt trước', 'Mặt trên']] as const)('reconciles PIP presets after a %s main viewport remount and still swaps them', (mainLabel, otherLabel) => {
@@ -155,6 +219,9 @@ describe('ViewerViewports', () => {
   it('uses one canvas plus preset tabs for Quad View below 640px', () => {
     mockMobile(true);
     renderViewer();
+
+    expect(screen.getByRole('button', { name: 'PIP' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Quad View' }));
 
     expect(screen.getAllByLabelText(/viewport/i)).toHaveLength(1);
