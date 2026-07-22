@@ -37,7 +37,7 @@ describe('PackingViewer', () => {
   it('gives floor-only cartons a distinct plan class', () => {
     render(<PackingViewer packedContainers={[floorOnlyContainer]} selectedPlacementId={null} onSelectPlacement={() => {}} step={1} />);
 
-    fireEvent.click(screen.getAllByRole('button')[1]);
+    fireEvent.click(screen.getByRole('button', { name: /^mặt bằng$/i }));
 
     expect(screen.getAllByRole('button').find((button) => button.classList.contains('plan-box'))).toHaveClass('floor-only');
   });
