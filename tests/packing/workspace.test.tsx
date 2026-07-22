@@ -6,6 +6,14 @@ import { PackingWorkspace } from '@/components/packing/packing-workspace';
 afterEach(cleanup);
 
 describe('PackingWorkspace', () => {
+  it('scopes status announcements instead of nesting the entire simulation stage', () => {
+    const { container } = render(<PackingWorkspace />);
+
+    expect(container.querySelector('.simulation-stage')).not.toHaveAttribute('aria-live');
+    expect(container.querySelector('.stage-status')).toHaveAttribute('role', 'status');
+    expect(container.querySelector('.stage-status')).toHaveAttribute('aria-live', 'polite');
+  });
+
   it('applies a presentation override to the table and resets it before re-optimizing', () => {
     render(<PackingWorkspace />);
 

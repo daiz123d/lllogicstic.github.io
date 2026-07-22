@@ -35,7 +35,7 @@ function useMobileViewports() {
   const [mobile, setMobile] = useState(false);
 
   useEffect(() => {
-    const query = window.matchMedia?.('(max-width: 639px)');
+    const query = window.matchMedia?.('(max-width: 640px)');
     if (!query) return;
     const update = () => setMobile(query.matches);
     update();

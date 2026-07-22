@@ -27,10 +27,10 @@ function formatWeight(value: number) {
 }
 
 export function ViewerHud({ metrics, selected, unpacked }: ViewerHudProps) {
-  return <div className="viewer-metrics" aria-label="Chỉ số mô phỏng" aria-live="polite" aria-atomic="true">
+  return <div className="viewer-metrics" aria-label="Chỉ số mô phỏng">
     <span>Thể tích {metrics.volumePercent.toFixed(1)}%</span>
     <span>Tải trọng {formatWeight(metrics.usedWeight)} / {formatWeight(metrics.maxWeight)} kg</span>
-    <span>Đã xếp {metrics.packed} / {metrics.total} kiện</span>
+    <span aria-live="polite" aria-atomic="true">Đã xếp {metrics.packed} / {metrics.total} kiện</span>
     <span>Chưa xếp {unpacked.length} kiện</span>
     {selected && <span aria-label="Tọa độ kiện đã chọn">X {selected.x.toFixed(2)} · Y {selected.y.toFixed(2)} · Z {selected.z.toFixed(2)}</span>}
   </div>;

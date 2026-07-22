@@ -269,8 +269,8 @@ export function PackingWorkspace() {
     <section className="packing-workspace" aria-label="Không gian xếp thùng">
       <div className="workflow-stepper" aria-label="Quy trình xếp hàng"><span className="complete">1 Chọn container</span><i /><span className="complete">2 Nhập hàng hóa</span><i /><span className="complete">3 Chọn chiến lược</span><i /><span className={result ? 'complete' : 'current'}>4 Tối ưu xếp hàng</span><i /><span className={result ? 'current' : ''}>5 Kiểm tra & xuất</span></div>
       <div className="work-grid">
-        <section className="simulation-stage" aria-live="polite">
-          <div className="stage-status"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}<span className="stage-context">{result ? `${usedContainerCount} container đang hiển thị` : 'Chờ dữ liệu xếp hàng'}</span></div>
+        <section className="simulation-stage">
+          <div className="stage-status" role="status" aria-live="polite" aria-atomic="true"><span className={result ? 'status-dot ready' : 'status-dot'} />{message}<span className="stage-context">{result ? `${usedContainerCount} container đang hiển thị` : 'Chờ dữ liệu xếp hàng'}</span></div>
           <PackingViewer packedContainers={presentationResult?.results ?? []} selectedPlacementId={selectedPlacementId} onSelectPlacement={selectPlacement} onApplyPlacementOverride={applyManualOverride} step={step} reducedMotion={reducedMotion} focusToken={focusToken} onRequestFocus={requestFocus} />
           {result && placementCount > 0 && <><ViewerPlayback step={step} total={placementCount} playing={playing} speed={speed} reducedMotion={reducedMotion} onStepChange={(nextStep) => setStep(Math.min(placementCount, Math.max(0, nextStep)))} onPlayingChange={setPlaying} onSpeedChange={setSpeed} />{selectedPlacement && <p className="selected-detail">Đang chọn: <strong>{selectedPlacement.label}</strong> · vị trí ({selectedPlacement.x.toFixed(1)}, {selectedPlacement.y.toFixed(1)}, {selectedPlacement.z.toFixed(1)}) · {selectedPlacement.weight} kg</p>}</>}
         </section>
