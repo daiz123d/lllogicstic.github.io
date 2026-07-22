@@ -34,10 +34,12 @@ The automatic policy therefore prioritizes the smallest usable container and add
 - If the catalog cannot pack a carton, retain it in `leftover` with its packing reason and show the warning state.
 - Guard the selection loop against non-progress: stop immediately when the best candidate packs zero cartons.
 - Do not silently substitute a manually entered container while automatic sample selection is active.
+- A carton with `stackable: false` is floor-only: it must have `y = 0` and no carton may be placed on top of it. The packing validation and automatic packing path must enforce the same rule.
 
 ## Testing
 
 - Adapter test: a carton set that fits a single preset returns that preset with a stable ID.
 - Adapter test: a carton set that does fit a large preset still starts with the smallest usable preset and adds a second sample when needed.
 - Workspace test: switching to automatic sample mode invokes the sample-selection path and renders the recommended container name.
+- Packing test: a non-stackable carton following a stackable carton remains unpacked when the only available position is above that carton.
 - Preserve legacy tests for `selectBestPresetContainers` as algorithm regression coverage.
