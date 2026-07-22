@@ -41,6 +41,12 @@ function isValidCarton(carton: CartonInput) {
   return carton.length > 0 && carton.width > 0 && carton.height > 0 && carton.quantity > 0 && carton.weight >= 0;
 }
 
+function summarizeSelectedContainers(results: PackingResult['results']) {
+  const counts = new Map<string, number>();
+  results.forEach(({ container }) => counts.set(container.name, (counts.get(container.name) ?? 0) + 1));
+  return [...counts].map(([name, count]) => `${count} × ${name}`).join(', ');
+}
+
 type ImportTarget = 'cartons' | 'containers';
 
 export function PackingWorkspace() {
@@ -109,7 +115,7 @@ export function PackingWorkspace() {
     setStep(nextResult.results.reduce((sum, item) => sum + item.packed.length, 0));
     setSelectedPlacementId(null);
     const nextPacked = nextResult.results.reduce((sum, item) => sum + item.packed.length, 0);
-    const selectedNames = nextResult.results.map((item) => item.container.name).join(', ');
+    const selectedNames = summarizeSelectedContainers(nextResult.results);
     setMessage(`${containerMode === 'presets' ? 'Đã tự chọn' : 'Đã dùng'} ${selectedNames || 'chưa có container'} để xếp ${nextPacked} kiện${nextResult.leftover.length ? `, còn ${nextResult.leftover.length} kiện chưa xếp` : ', không còn kiện dư'}.`);
   }
 
