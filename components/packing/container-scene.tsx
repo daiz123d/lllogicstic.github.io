@@ -1,6 +1,6 @@
 'use client';
 
-import { ContactShadows, Edges, Html, OrbitControls, OrthographicCamera, TransformControls } from '@react-three/drei';
+import { ContactShadows, Edges, Html, OrbitControls, OrthographicCamera } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
@@ -174,7 +174,6 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
       />
       <ContactShadows position={[0, 0, 0]} opacity={.38} scale={Math.max(width, length) * 2.5} blur={2.4} far={height + 6} />
       <OrbitControls ref={controls} makeDefault enablePan />
-      <TransformControls enabled={false} />
     </Canvas>
   </div>;
 }
