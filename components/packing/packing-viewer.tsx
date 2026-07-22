@@ -1,13 +1,13 @@
 'use client';
 
-import { ContactShadows, Edges, Grid, Html, OrbitControls } from '@react-three/drei';
-import { Canvas, useThree } from '@react-three/fiber';
-import { Box, Crosshair, Expand, Map, Rotate3D, ScanLine, Tags } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Expand, Map, Tags } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 
+import { ContainerScene } from '@/components/packing/container-scene';
 import type { PackedContainer, Placement } from '@/lib/packing/types';
 
-type CameraPreset = 'perspective' | 'side' | 'front';
+import type { RenderMode, ShellVisibility, ViewPreset } from './viewer-types';
+
 type ViewerProps = {
   packedContainers: PackedContainer[];
   selectedPlacementId: string | null;
@@ -44,71 +44,6 @@ export function getCargoFocus(container: PackedContainer, placements: Placement[
   return { target, span: Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, bounds.maxZ - bounds.minZ, Math.max(width, height, length) * .45) };
 }
 
-function CameraRig({ preset, focus }: { preset: CameraPreset; focus: ReturnType<typeof getCargoFocus> }) {
-  const { camera } = useThree();
-  useEffect(() => {
-    const distance = focus.span * 1.7 + 1.5;
-    const [targetX, targetY, targetZ] = focus.target;
-    const position: [number, number, number] = preset === 'side' ? [targetX + distance, targetY + focus.span * .3, targetZ] : preset === 'front' ? [targetX, targetY + focus.span * .28, targetZ + distance] : [targetX + distance, targetY + focus.span * .78 + .8, targetZ + distance];
-    camera.position.set(...position);
-    camera.lookAt(...focus.target);
-    camera.updateProjectionMatrix();
-  }, [camera, focus, preset]);
-  return null;
-}
-
-function Scene({ container, placements, selectedPlacementId, onSelectPlacement, cameraPreset, showLabels, wireframe }: {
-  container: PackedContainer;
-  placements: Placement[];
-  selectedPlacementId: string | null;
-  onSelectPlacement: (placementId: string) => void;
-  cameraPreset: CameraPreset;
-  showLabels: boolean;
-  wireframe: boolean;
-}) {
-  const { width, height, length } = container.container;
-  const largestDimension = Math.max(width, height, length);
-  const cargoFocus = useMemo(() => getCargoFocus(container, placements), [container, placements]);
-
-  return <Canvas camera={{ position: [width * 1.4, height * 1.1 + 2, length * 1.4], fov: 44 }} shadows dpr={[1, 2]}>
-    <color attach="background" args={['#07131F']} />
-    <CameraRig preset={cameraPreset} focus={cargoFocus} />
-    <ambientLight intensity={0.72} />
-    <directionalLight castShadow intensity={2.2} position={[width * 1.5, height * 2 + 3, length]} shadow-mapSize={[2048, 2048]} />
-    <Grid args={[largestDimension * 1.35, Math.max(10, Math.ceil(largestDimension * 4))]} cellColor="#183857" sectionColor="#2b6380" position={[0, -0.02, 0]} />
-    <mesh position={[0, -0.06, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-      <planeGeometry args={[Math.max(width, length) * 4, Math.max(width, length) * 4]} />
-      <meshStandardMaterial color="#081725" roughness={0.92} />
-    </mesh>
-    <group>
-      <mesh position={[0, -.04, 0]} receiveShadow><boxGeometry args={[width, .08, length]} /><meshStandardMaterial color="#123b55" transparent opacity={.72} roughness={.86} /></mesh>
-      <mesh position={[-width / 2, height / 2, 0]}><boxGeometry args={[.05, height, length]} /><meshStandardMaterial color="#164764" transparent opacity={.19} /></mesh>
-      <mesh position={[width / 2, height / 2, 0]}><boxGeometry args={[.05, height, length]} /><meshStandardMaterial color="#164764" transparent opacity={.19} /></mesh>
-      <mesh position={[0, height / 2, -length / 2]}><boxGeometry args={[width, height, .05]} /><meshStandardMaterial color="#164764" transparent opacity={.24} /></mesh>
-      <mesh position={[0, height / 2, 0]}><boxGeometry args={[width, height, length]} /><meshBasicMaterial transparent opacity={0} depthWrite={false} /><Edges color="#67e8f9" transparent opacity={.38} /></mesh>
-    </group>
-    {placements.map((placement) => {
-      const key = placementKey(container.container.id, placement);
-      const selected = selectedPlacementId === key;
-      const position: [number, number, number] = [
-        placement.x + placement.width / 2 - width / 2,
-        placement.y + placement.height / 2,
-        placement.z + placement.length / 2 - length / 2,
-      ];
-      return <group key={key} position={position}>
-        <mesh castShadow onClick={(event) => { event.stopPropagation(); onSelectPlacement(key); }}>
-          <boxGeometry args={[placement.width, placement.height, placement.length]} />
-          <meshStandardMaterial color={placement.color || '#22D3EE'} roughness={0.42} metalness={0.04} wireframe={wireframe} emissive={selected ? '#6ee7ff' : '#000000'} emissiveIntensity={selected ? .45 : 0} />
-        </mesh>
-        {showLabels && <Html center distanceFactor={8}><span className={selected ? 'scene-label selected' : 'scene-label'}>{placement.order}</span></Html>}
-        {!placement.stackable && <Html position={[0, placement.height / 2 + .22, 0]} center distanceFactor={8}><span className="scene-floor-only">SÀN</span></Html>}
-      </group>;
-    })}
-    <ContactShadows position={[0, 0, 0]} opacity={0.38} scale={Math.max(width, length) * 2.5} blur={2.4} far={height + 6} />
-    <OrbitControls makeDefault minDistance={cargoFocus.span * .85} maxDistance={cargoFocus.span * 8 + 4} target={cargoFocus.target} />
-  </Canvas>;
-}
-
 function PlanView({ container, placements, selectedPlacementId, onSelectPlacement }: {
   container: PackedContainer;
   placements: Placement[];
@@ -130,9 +65,12 @@ function PlanView({ container, placements, selectedPlacementId, onSelectPlacemen
 export function PackingViewer({ packedContainers, selectedPlacementId, onSelectPlacement, step }: ViewerProps) {
   const [mode, setMode] = useState<'3d' | '2d'>('3d');
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('perspective');
+  const [preset, setPreset] = useState<ViewPreset>('iso');
+  const [renderMode, setRenderMode] = useState<RenderMode>('solid');
+  const [shell, setShell] = useState<ShellVisibility>({ all: true, left: true, right: true, roof: true, front: false });
   const [showLabels, setShowLabels] = useState(true);
-  const [wireframe, setWireframe] = useState(false);
+  const [hoveredPlacementId, setHoveredPlacementId] = useState<string | null>(null);
+  const [focusToken, setFocusToken] = useState('fit:0');
   const viewerRef = useRef<HTMLElement>(null);
   const supportsWebgl = useMemo(() => typeof window !== 'undefined' && 'WebGLRenderingContext' in window, []);
   const usedContainers = packedContainers.filter((item) => item.packed.length > 0);
@@ -144,14 +82,35 @@ export function PackingViewer({ packedContainers, selectedPlacementId, onSelectP
     void viewerRef.current?.requestFullscreen?.();
   }
 
+  function updateShell(layer: keyof ShellVisibility, checked: boolean) {
+    setShell((current) => ({ ...current, [layer]: checked }));
+  }
+
+  function fitContainer() {
+    setFocusToken((current) => `fit:${Number(current.split(':')[1] ?? 0) + 1}`);
+  }
+
   return <section className="viewer-panel" aria-label="Trình xem xếp thùng" ref={viewerRef}>
     <div className="viewer-toolbar"><div><p className="section-kicker">KHÔNG GIAN XẾP</p><h2>{active?.container.name ?? 'Chưa có phương án'}</h2>{insights && <div className="viewer-metrics" aria-label="Chỉ số xếp hàng"><span>{insights.count} kiện</span><span>Lấp đầy {insights.fillPercentage.toFixed(1)}%</span>{insights.floorOnlyCount > 0 && <span className="floor-only-metric">{insights.floorOnlyCount} kiện nằm sàn</span>}</div>}</div><div className="view-toggle" role="group" aria-label="Chế độ xem"><button type="button" className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}><Box size={15} aria-hidden="true" />3D</button><button type="button" className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}><Map size={15} aria-hidden="true" />Mặt bằng</button></div></div>
-    <div className="simulation-toolbar" role="toolbar" aria-label="Điều khiển mô phỏng"><button type="button" aria-label="Góc phối cảnh" className={cameraPreset === 'perspective' ? 'active' : ''} onClick={() => { setMode('3d'); setCameraPreset('perspective'); }}><Rotate3D size={15} />Phối cảnh</button><button type="button" aria-label="Góc nhìn mặt bên" className={cameraPreset === 'side' ? 'active' : ''} onClick={() => { setMode('3d'); setCameraPreset('side'); }}><ScanLine size={15} />Mặt bên</button><button type="button" aria-label="Góc nhìn mặt trước" className={cameraPreset === 'front' ? 'active' : ''} onClick={() => { setMode('3d'); setCameraPreset('front'); }}><Crosshair size={15} />Mặt trước</button><button type="button" aria-label="Bật hoặc tắt nhãn kiện" className={showLabels ? 'active' : ''} onClick={() => setShowLabels((value) => !value)}><Tags size={15} />Nhãn</button><button type="button" aria-label="Bật hoặc tắt wireframe" className={wireframe ? 'active' : ''} onClick={() => setWireframe((value) => !value)}><Box size={15} />Wireframe</button><button type="button" aria-label="Mở toàn màn hình" onClick={enterFullscreen}><Expand size={15} />Toàn màn hình</button></div>
+    <div className="simulation-toolbar" role="toolbar" aria-label="Điều khiển mô phỏng">
+      {([['iso', 'Isometric'], ['top', 'Mặt trên'], ['front', 'Mặt trước'], ['side', 'Mặt bên']] as const).map(([value, label]) => <button type="button" aria-pressed={preset === value} className={preset === value ? 'active' : ''} key={value} onClick={() => { setMode('3d'); setPreset(value); }}>{label}</button>)}
+      <button type="button" onClick={fitContainer}>Vừa khung hình</button>
+      <button type="button" aria-pressed={showLabels} className={showLabels ? 'active' : ''} onClick={() => setShowLabels((value) => !value)}><Tags size={15} />Nhãn</button>
+      <button type="button" aria-pressed={renderMode === 'wireframe'} className={renderMode === 'wireframe' ? 'active' : ''} onClick={() => setRenderMode((value) => value === 'wireframe' ? 'solid' : 'wireframe')}><Box size={15} />Wireframe</button>
+      <button type="button" aria-label="Mở toàn màn hình" onClick={enterFullscreen}><Expand size={15} />Toàn màn hình</button>
+    </div>
+    <fieldset className="simulation-toolbar" aria-label="Lớp vỏ container">
+      <label><input type="checkbox" checked={shell.all} onChange={(event) => updateShell('all', event.target.checked)} />Tất cả vỏ</label>
+      <label><input type="checkbox" checked={shell.left} onChange={(event) => updateShell('left', event.target.checked)} />Thành trái</label>
+      <label><input type="checkbox" checked={shell.right} onChange={(event) => updateShell('right', event.target.checked)} />Thành phải</label>
+      <label><input type="checkbox" checked={shell.roof} onChange={(event) => updateShell('roof', event.target.checked)} />Nóc container</label>
+      <label><input type="checkbox" checked={shell.front} onChange={(event) => updateShell('front', event.target.checked)} />Mặt trước</label>
+    </fieldset>
     {usedContainers.length > 1 && <div className="container-tabs">{usedContainers.map((item) => <button className={item.container.id === active?.container.id ? 'active' : ''} type="button" key={item.container.id} onClick={() => setActiveId(item.container.id)}>{item.container.name}</button>)}</div>}
     {!active && mode === '3d' && <div className="viewer-empty">Xếp hàng để mở mô hình container 3D.</div>}
     {!active && mode === '2d' && <div className="plan-view viewer-empty" aria-label="Sơ đồ xếp 2D">Chưa có kiện nào để hiển thị trên mặt bằng.</div>}
     {active && mode === '2d' && <PlanView container={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} onSelectPlacement={onSelectPlacement} />}
-    {active && mode === '3d' && supportsWebgl && <div className="scene-canvas"><Scene container={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} onSelectPlacement={onSelectPlacement} cameraPreset={cameraPreset} showLabels={showLabels} wireframe={wireframe} /></div>}
+    {active && mode === '3d' && supportsWebgl && <ContainerScene packedContainer={active} placements={visiblePlacements} selectedPlacementId={selectedPlacementId} hoveredPlacementId={hoveredPlacementId} preset={preset} mode={renderMode} shell={shell} focusToken={focusToken} showLabels={showLabels} onSelectPlacement={onSelectPlacement} onHoverPlacement={setHoveredPlacementId} onRequestFocus={(key) => setFocusToken(`placement:${key}`)} />}
     {active && mode === '3d' && !supportsWebgl && <div className="viewer-empty">Thiết bị này chưa hỗ trợ WebGL. Hãy dùng “Mặt bằng” để xem phương án xếp.</div>}
   </section>;
 }
