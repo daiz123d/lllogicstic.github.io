@@ -21,7 +21,18 @@ const packedContainer: PackedContainer = {
 
 describe('viewer model', () => {
   it('fits the container to 75 percent of an orthographic viewport', () => {
-    expect(getCameraFrame({ width: 2, height: 2, length: 10 }, 'iso', 1200, 700)).toMatchObject({ coverage: .75, elevation: 32 });
+    const longLandscape = getCameraFrame({ width: 2, height: 2, length: 10 }, 'iso', 1200, 700);
+    const longPortrait = getCameraFrame({ width: 2, height: 2, length: 10 }, 'iso', 700, 1200);
+    const compactLandscape = getCameraFrame({ width: 2, height: 2, length: 2 }, 'iso', 1200, 700);
+    const [targetX, targetY, targetZ] = longLandscape.target;
+    const [positionX, positionY, positionZ] = longLandscape.position;
+    const horizontalDistance = Math.hypot(positionX - targetX, positionZ - targetZ);
+    const measuredElevation = Math.atan2(positionY - targetY, horizontalDistance) * 180 / Math.PI;
+
+    expect(longLandscape).toMatchObject({ coverage: .75, elevation: 32 });
+    expect(measuredElevation).toBeCloseTo(32, 6);
+    expect(longLandscape.zoom).toBeGreaterThan(longPortrait.zoom);
+    expect(compactLandscape.zoom).toBeGreaterThan(longLandscape.zoom);
   });
 
   it('computes volume, weight, packed and floor-only metrics', () => {

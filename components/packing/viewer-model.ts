@@ -23,8 +23,9 @@ export function getCameraFrame(bounds: ContainerBounds, preset: ViewPreset, view
         : { width: bounds.length, height: bounds.height };
   const zoom = COVERAGE / Math.max(projected.width / aspect, projected.height, Number.EPSILON);
   const distance = Math.max(bounds.width, bounds.height, bounds.length, 1) * 2;
+  const isoHorizontalOffset = distance * Math.cos(elevationRadians) * Math.SQRT1_2;
   const position: [number, number, number] = preset === 'iso'
-    ? [target[0] + distance, target[1] + distance * Math.sin(elevationRadians), target[2] + distance]
+    ? [target[0] + isoHorizontalOffset, target[1] + distance * Math.sin(elevationRadians), target[2] + isoHorizontalOffset]
     : preset === 'top'
       ? [target[0], target[1] + distance, target[2]]
       : preset === 'front'
