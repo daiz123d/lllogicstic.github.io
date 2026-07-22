@@ -96,10 +96,10 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 .packing-viewport > .scene-canvas { width: 100%; height: 100%; min-height: inherit; }
 .viewport-single { height: 405px; }
 .viewport-single .packing-viewport { height: 100%; border: 0; }
-.viewport-pip { display: grid; min-height: 440px; grid-template-columns: minmax(0, 1fr) minmax(210px, 28%); gap: 8px; padding: 8px; }
-.viewport-main { min-height: 424px; }
-.pip-stack { display: grid; min-height: 0; align-content: stretch; gap: 8px; }
-.viewport-pip-panel { min-height: 204px; }
+.viewport-pip { position: relative; min-height: 440px; padding: 8px; }
+.viewport-main { width: 100%; min-height: 424px; }
+.pip-stack { position: absolute; z-index: 3; top: 16px; right: 16px; bottom: 16px; display: grid; width: clamp(180px, 26%, 240px); min-height: 0; grid-template-rows: repeat(2, minmax(0, 1fr)); align-content: stretch; gap: 8px; }
+.viewport-pip-panel { min-height: 0; box-shadow: 0 8px 24px rgba(0, 0, 0, .36); }
 .pip-actions { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
 .pip-actions button, .pip-restore, .viewport-preset-tabs button { min-height: 26px; padding: 0 7px; border: 1px solid var(--port-line-strong); border-radius: 4px; color: var(--port-text); background: rgba(7, 19, 31, .9); cursor: pointer; font-size: .58rem; }
 .pip-restore { align-self: center; justify-self: stretch; }
@@ -109,8 +109,18 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 .viewport-preset-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px; border-bottom: 1px solid var(--port-line); }
 .viewport-preset-tabs button.active { border-color: var(--port-cyan); color: var(--port-cyan); background: rgba(34, 211, 238, .1); }
 .viewer-observation-warning { padding: 7px 13px; border-bottom: 1px solid rgba(251, 191, 36, .45); color: var(--port-amber); background: rgba(251, 191, 36, .08); font-size: .66rem; font-weight: 800; text-align: center; }
+.viewer-mode-status { padding: 7px 13px; border-bottom: 1px solid rgba(34, 211, 238, .45); color: var(--port-cyan); background: rgba(34, 211, 238, .08); font-size: .66rem; font-weight: 800; text-align: center; }
+
+:where(button, input, select, [role="tab"], [role="tabpanel"]):focus-visible { outline: 3px solid var(--port-cyan); outline-offset: 2px; }
+.simulation-toolbar button[aria-pressed="true"], .viewport-layout-controls button[aria-pressed="true"] { border-color: rgba(34, 211, 238, .7); color: var(--port-cyan); background: rgba(34, 211, 238, .09); }
+.simulation-toolbar input:checked { accent-color: var(--port-cyan); }
 
 @media (max-width: 640px) {
   .viewport-layout-controls { flex-wrap: wrap; overflow: visible; }
   .viewport-mobile { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  .viewport-mobile [role="tabpanel"] { min-width: 0; min-height: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-label, .scene-floor-only, .plan-box, .packing-viewport { transition: none !important; animation: none !important; }
 }

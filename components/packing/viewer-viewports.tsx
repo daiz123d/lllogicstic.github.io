@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 
 import { ContainerScene } from './container-scene';
 import type { ContainerSceneProps } from './container-scene';
@@ -61,6 +62,8 @@ export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, 
   const mobile = useMobileViewports();
   const [pipPresets, setPipPresets] = useState<ViewPreset[]>(() => getPipPresets(mainPreset));
   const previousMainPreset = useRef(mainPreset);
+  const mobilePanelId = useId();
+  const mobileTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const visiblePipPresets = getPipPresets(mainPreset, pipPresets);
 
   useEffect(() => {
@@ -77,17 +80,48 @@ export function ViewerViewports({ layout, mainPreset, collapsedPip, sceneProps, 
     onMainPresetChange(nextMain);
   }
 
-  if (layout === 'single') {
-    return <div className="viewport-layout viewport-single">
-      <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport`} sceneProps={sceneProps} primary />
-    </div>;
+  function handleMobileTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) {
+    let nextIndex: number | undefined;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % PRESETS.length;
+    if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + PRESETS.length) % PRESETS.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = PRESETS.length - 1;
+    if (nextIndex === undefined) return;
+
+    event.preventDefault();
+    onMainPresetChange(PRESETS[nextIndex]);
+    mobileTabRefs.current[nextIndex]?.focus();
   }
 
   if (mobile) {
     return <div className="viewport-layout viewport-mobile">
       <div className="viewport-preset-tabs" role="tablist" aria-label="Góc nhìn camera">
-        {PRESETS.map((preset) => <button key={preset} type="button" role="tab" aria-selected={preset === mainPreset} className={preset === mainPreset ? 'active' : ''} onClick={() => onMainPresetChange(preset)}>{PRESET_LABELS[preset]}</button>)}
+        {PRESETS.map((preset, index) => {
+          const selected = preset === mainPreset;
+          const tabId = `${mobilePanelId}-${preset}-tab`;
+          return <button
+            key={preset}
+            ref={(element) => { mobileTabRefs.current[index] = element; }}
+            id={tabId}
+            type="button"
+            role="tab"
+            aria-controls={mobilePanelId}
+            aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
+            className={selected ? 'active' : ''}
+            onClick={() => onMainPresetChange(preset)}
+            onKeyDown={(event) => handleMobileTabKeyDown(event, index)}
+          >{PRESET_LABELS[preset]}</button>;
+        })}
       </div>
+      <div id={mobilePanelId} role="tabpanel" aria-labelledby={`${mobilePanelId}-${mainPreset}-tab`} tabIndex={0}>
+        <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport`} sceneProps={sceneProps} primary />
+      </div>
+    </div>;
+  }
+
+  if (layout === 'single') {
+    return <div className="viewport-layout viewport-single">
       <Viewport preset={mainPreset} label={`${PRESET_LABELS[mainPreset]} viewport`} sceneProps={sceneProps} primary />
     </div>;
   }
