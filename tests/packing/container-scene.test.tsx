@@ -7,21 +7,37 @@ import { createPlacementDraft } from '@/lib/packing/manual-layout';
 import { PackingViewer } from '@/components/packing/packing-viewer';
 import type { PackedContainer } from '@/lib/packing/types';
 
-const dreiSpies = vi.hoisted(() => ({ transformControls: vi.fn(() => null) }));
-const threeSpies = vi.hoisted(() => ({ positionSet: vi.fn(), lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoomSet: vi.fn() }));
+const dreiSpies = vi.hoisted(() => ({ transformControls: vi.fn(() => null), contactShadows: vi.fn(() => null), html: vi.fn() }));
+const threeSpies = vi.hoisted(() => {
+  const positionSet = vi.fn();
+  const lookAt = vi.fn();
+  const updateProjectionMatrix = vi.fn();
+  const zoomSet = vi.fn();
+  let zoom = 1;
+  const defaultCamera = {
+    position: { set: positionSet }, lookAt, updateProjectionMatrix,
+    get zoom() { return zoom; },
+    set zoom(value: number) { zoom = value; zoomSet(value); },
+  };
+  return { positionSet, lookAt, updateProjectionMatrix, zoomSet, defaultCamera };
+});
+const threeState = vi.hoisted(() => ({ camera: null as null | typeof threeSpies.defaultCamera }));
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="scene-canvas">{children}</div>,
   useThree: () => ({
-    camera: { position: { set: threeSpies.positionSet }, lookAt: threeSpies.lookAt, updateProjectionMatrix: threeSpies.updateProjectionMatrix, get zoom() { return 1; }, set zoom(value: number) { threeSpies.zoomSet(value); } },
+    camera: threeState.camera ?? threeSpies.defaultCamera,
     size: { width: 1200, height: 700 },
   }),
 }));
 
 vi.mock('@react-three/drei', () => ({
-  ContactShadows: () => null,
+  ContactShadows: dreiSpies.contactShadows,
   Edges: ({ color }: { color: string }) => <i data-edge-color={color} />,
-  Html: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Html: (props: { children: React.ReactNode; distanceFactor?: number }) => {
+    dreiSpies.html(props);
+    return <>{props.children}</>;
+  },
   OrbitControls: () => null,
   OrthographicCamera: () => null,
   TransformControls: dreiSpies.transformControls,
@@ -43,6 +59,9 @@ afterEach(() => {
   threeSpies.lookAt.mockClear();
   threeSpies.positionSet.mockClear();
   threeSpies.zoomSet.mockClear();
+  dreiSpies.contactShadows.mockClear();
+  dreiSpies.html.mockClear();
+  threeState.camera = null;
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -175,6 +194,77 @@ describe('ContainerScene viewer contract', () => {
     rerender(<ContainerScene packedContainer={sameSizedContainer} placements={sameSizedContainer.packed} {...sceneProps} />);
 
     expect(threeSpies.positionSet).toHaveBeenCalled();
+  });
+
+  it('reapplies the camera frame when Drei replaces the default camera', () => {
+    const sceneProps = {
+      packedContainer,
+      placements: packedContainer.packed,
+      selectedPlacementId: null,
+      hoveredPlacementId: null,
+      preset: 'iso' as const,
+      mode: 'solid' as const,
+      shell: { all: true, left: true, right: true, roof: true, front: false },
+      focusToken: 'fit:0',
+      onSelectPlacement: () => {},
+      onHoverPlacement: () => {},
+      onRequestFocus: () => {},
+    };
+    const { rerender } = render(<ContainerScene {...sceneProps} />);
+    let replacementZoom = 1;
+    const replacement = {
+      position: { set: vi.fn() },
+      lookAt: vi.fn(),
+      updateProjectionMatrix: vi.fn(),
+      get zoom() { return replacementZoom; },
+      set zoom(value: number) { replacementZoom = value; },
+    };
+
+    threeState.camera = replacement;
+    rerender(<ContainerScene {...sceneProps} />);
+
+    expect(replacement.position.set).toHaveBeenCalled();
+    expect(replacement.zoom).toBeGreaterThan(1);
+  });
+
+  it('keeps HTML labels at CSS pixel scale with an orthographic camera', () => {
+    render(<ContainerScene
+      packedContainer={packedContainer}
+      placements={packedContainer.packed}
+      selectedPlacementId={null}
+      hoveredPlacementId={null}
+      preset="iso"
+      mode="solid"
+      shell={{ all: true, left: true, right: true, roof: true, front: false }}
+      focusToken="fit:0"
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    />);
+
+    expect(dreiSpies.html).toHaveBeenCalled();
+    for (const [props] of dreiSpies.html.mock.calls) expect(props).not.toHaveProperty('distanceFactor');
+  });
+
+  it('keeps contact shadows local to the floor without coplanar overlap', () => {
+    render(<ContainerScene
+      packedContainer={packedContainer}
+      placements={packedContainer.packed}
+      selectedPlacementId={null}
+      hoveredPlacementId={null}
+      preset="iso"
+      mode="solid"
+      shell={{ all: true, left: true, right: true, roof: true, front: false }}
+      focusToken="fit:0"
+      onSelectPlacement={() => {}}
+      onHoverPlacement={() => {}}
+      onRequestFocus={() => {}}
+    />);
+
+    expect(dreiSpies.contactShadows).toHaveBeenCalledWith(expect.objectContaining({
+      scale: [packedContainer.container.width * 1.08, packedContainer.container.length * 1.08],
+      position: [0, .01, 0],
+    }), undefined);
   });
 
   it('does not reapply the camera when playback reveals another placement', () => {

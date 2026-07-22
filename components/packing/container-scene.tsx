@@ -83,7 +83,7 @@ function CameraController({ preset, focusToken, packedContainer, mode, activeCon
     camera.updateProjectionMatrix();
     controls.current?.target.set(...target);
     controls.current?.update();
-  }, [preset, focusToken, activeContainerId, width, height, length, allPlacements, size.width, size.height]);
+  }, [camera, preset, focusToken, activeContainerId, width, height, length, allPlacements, size.width, size.height]);
 
   return null;
 }
@@ -387,10 +387,10 @@ function Cargo({ packedContainer, placements, selectedPlacementId, hoveredPlacem
           />
           <Edges color={selected ? '#fbbf24' : hovered ? '#a5f3fc' : entering && (moving || entry.landing) ? '#22d3ee' : '#164e63'} lineWidth={1} />
         </mesh>
-        {showLabels && <Html center distanceFactor={8}><span className={selected ? 'scene-label selected' : 'scene-label'}>{placement.order}</span></Html>}
-        {hovered && <Html position={[0, displayedPlacement.height / 2 + .28, 0]} center distanceFactor={8}><span role="tooltip" className="scene-floor-only">{placement.label} · D {displayedPlacement.length.toFixed(2)} × R {displayedPlacement.width.toFixed(2)} × C {displayedPlacement.height.toFixed(2)} · {placement.weight.toFixed(1)} kg</span></Html>}
-        {selected && <Html position={[0, displayedPlacement.height / 2 + .54, 0]} center distanceFactor={8}><span className="scene-floor-only" aria-label="Thông tin kiện đã chọn">D {displayedPlacement.length.toFixed(2)} × R {displayedPlacement.width.toFixed(2)} × C {displayedPlacement.height.toFixed(2)} · X {displayedPlacement.x.toFixed(2)} · Y {displayedPlacement.y.toFixed(2)} · Z {displayedPlacement.z.toFixed(2)} · ↻ {editing ? manualDraft.rotation.map((value) => `${Math.round(value * 180 / Math.PI)}°`).join('/') : 'Trục D–R–C'}</span></Html>}
-        {!placement.stackable && <Html position={[0, placement.height / 2 + .22, 0]} center distanceFactor={8}><span className="scene-floor-only">SÀN</span></Html>}
+        {showLabels && <Html center><span className={selected ? 'scene-label selected' : 'scene-label'}>{placement.order}</span></Html>}
+        {hovered && <Html position={[0, displayedPlacement.height / 2 + .28, 0]} center><span role="tooltip" className="scene-floor-only">{placement.label} · D {displayedPlacement.length.toFixed(2)} × R {displayedPlacement.width.toFixed(2)} × C {displayedPlacement.height.toFixed(2)} · {placement.weight.toFixed(1)} kg</span></Html>}
+        {selected && <Html position={[0, displayedPlacement.height / 2 + .54, 0]} center><span className="scene-floor-only" aria-label="Thông tin kiện đã chọn">D {displayedPlacement.length.toFixed(2)} × R {displayedPlacement.width.toFixed(2)} × C {displayedPlacement.height.toFixed(2)} · X {displayedPlacement.x.toFixed(2)} · Y {displayedPlacement.y.toFixed(2)} · Z {displayedPlacement.z.toFixed(2)} · ↻ {editing ? manualDraft.rotation.map((value) => `${Math.round(value * 180 / Math.PI)}°`).join('/') : 'Trục D–R–C'}</span></Html>}
+        {!placement.stackable && <Html position={[0, placement.height / 2 + .22, 0]} center><span className="scene-floor-only">SÀN</span></Html>}
       </group>;
     })}
     {playbackState?.nextPlacement && (() => {
@@ -485,7 +485,7 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
         onRequestFocus={onRequestFocus}
       />
       {mode === 'space' && <EmptyRegions packedContainer={packedContainer} regions={emptyRegions} />}
-      <ContactShadows position={[0, 0, 0]} opacity={.38} scale={Math.max(width, length) * 2.5} blur={2.4} far={height + 6} />
+      <ContactShadows position={[0, .01, 0]} opacity={.3} scale={[width * 1.08, length * 1.08]} blur={2.4} far={height + 6} />
       <OrbitControls ref={controls} makeDefault enablePan />
     </Canvas>
   </div>;

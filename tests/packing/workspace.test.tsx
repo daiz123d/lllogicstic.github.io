@@ -55,7 +55,7 @@ describe('PackingWorkspace', () => {
   });
 
   it.each([
-    ['workspace reset', () => fireEvent.click(screen.getByRole('button', { name: /..t l.i/i }))],
+    ['workspace reset', () => fireEvent.click(screen.getByRole('button', { name: 'Đặt lại' }))],
     ['container-mode change', () => {
       fireEvent.click(screen.getByRole('tab', { name: /^container$/i }));
       fireEvent.click(screen.getByRole('radio', { name: /d.ng container t. nh.p/i }));

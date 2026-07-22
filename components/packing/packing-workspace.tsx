@@ -174,12 +174,12 @@ export function PackingWorkspace() {
     const nextResult = containerMode === 'presets'
       ? packWithPresetContainers(cartons, { allowRotation, strategy })
       : packMultipleContainers(containers, cartons, { allowRotation, strategy });
+    const nextPacked = nextResult.results.reduce((sum, item) => sum + item.packed.length, 0);
     setResult(nextResult);
-    setStep(0);
+    setStep(nextPacked);
     setPlaybackTransition(null);
     setPlaying(false);
     setSelectedPlacementId(null);
-    const nextPacked = nextResult.results.reduce((sum, item) => sum + item.packed.length, 0);
     const selectedNames = summarizeSelectedContainers(nextResult.results);
     setMessage(`${containerMode === 'presets' ? 'Đã tự chọn' : 'Đã dùng'} ${selectedNames || 'chưa có container'} để xếp ${nextPacked} kiện${nextResult.leftover.length ? `, còn ${nextResult.leftover.length} kiện chưa xếp` : ', không còn kiện dư'}.`);
   }

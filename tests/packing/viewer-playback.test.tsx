@@ -64,4 +64,18 @@ describe('ViewerPlayback', () => {
     expect(screen.getByText('Bước 1/2')).toHaveAttribute('aria-atomic', 'true');
     expect(screen.getByRole('region', { name: 'Trình tự xếp hàng' })).not.toHaveAttribute('aria-live');
   });
+
+  it('restarts playback from the beginning when the completed result is replayed', () => {
+    const onStep = vi.fn();
+    const onPlaying = vi.fn();
+
+    render(<ViewerPlayback step={2} total={2} playing={false} speed={1} onStepChange={onStep} onPlayingChange={onPlaying} onSpeedChange={() => {}} />);
+
+    const replay = screen.getByRole('button', { name: 'Phát lại' });
+    expect(replay).toBeEnabled();
+    fireEvent.click(replay);
+
+    expect(onStep).toHaveBeenCalledWith(0, 'manual');
+    expect(onPlaying).toHaveBeenCalledWith(true);
+  });
 });

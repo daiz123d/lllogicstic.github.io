@@ -17,8 +17,6 @@ async function configureLargeScene(page: import('@playwright/test').Page) {
   await containerPanel.getByRole('spinbutton', { name: 'Cao (m)' }).fill('3');
   await page.getByRole('button', { name: 'Tối ưu xếp hàng' }).click();
   await expect(page.getByLabel('Hybrid Isometric Cutaway')).toBeVisible();
-  await expect(page.getByText('Bước 0/150')).toBeVisible();
-  await page.getByRole('slider', { name: 'Tiến trình xếp hàng' }).fill('150');
   await expect(page.getByText('Bước 150/150')).toBeVisible();
 }
 
@@ -27,7 +25,7 @@ async function configurePlaybackScene(page: import('@playwright/test').Page, qua
   await page.getByRole('tabpanel', { name: 'Hàng hóa' }).getByRole('spinbutton', { name: 'Số lượng' }).fill(String(quantity));
   await page.getByRole('button', { name: 'Tối ưu xếp hàng' }).click();
   await expect(page.getByLabel('Hybrid Isometric Cutaway')).toBeVisible();
-  await expect(page.getByText(`Bước 0/${quantity}`)).toBeVisible();
+  await expect(page.getByText(`Bước ${quantity}/${quantity}`)).toBeVisible();
 }
 
 type PlaybackTimerRecord = { id: number; delay: number; status: 'active' | 'cleared' | 'fired' };
@@ -154,6 +152,13 @@ function getTimerById(stats: PlaybackTimerStats, timerId: number) {
 test('operates the hybrid cutaway viewer without HUD or PIP overlap', async ({ page }) => {
   await optimize(page);
 
+  await expect(page.locator('.scene-label')).toHaveCount(4);
+  const largestLabel = await page.locator('.scene-label').evaluateAll((labels) => Math.max(...labels.map((label) => {
+    const bounds = label.getBoundingClientRect();
+    return Math.max(bounds.width, bounds.height);
+  })));
+  expect(largestLabel).toBeLessThanOrEqual(32);
+
   await page.getByRole('button', { name: 'Vừa khung hình' }).click();
   await expect(page.getByRole('button', { name: 'PIP' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('canvas')).toHaveCount(3);
@@ -203,7 +208,6 @@ test('operates the hybrid cutaway viewer without HUD or PIP overlap', async ({ p
   await expect(page.getByRole('button', { name: 'Khoảng trống' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('status', { name: 'Thể tích chưa sử dụng' })).toContainText('Khoảng trống');
 
-  await page.getByRole('button', { name: 'Tiếp' }).click();
   await page.getByRole('region', { name: 'Bảng chi tiết phương án xếp' }).getByRole('button', { name: 'Hộp mẫu', exact: true }).first().click();
   await expect(page.locator('.selected-detail')).toContainText('Đang chọn: Hộp mẫu');
 });

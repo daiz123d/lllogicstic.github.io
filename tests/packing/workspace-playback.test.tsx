@@ -33,11 +33,19 @@ afterEach(() => {
 });
 
 describe('PackingWorkspace global playback', () => {
+  it('shows the completed arrangement immediately after optimization', () => {
+    render(<PackingWorkspace />);
+
+    fireEvent.click(screen.getByRole('button', { name: /tối ưu xếp hàng/i }));
+    expect(screen.getByText('Bước 2/2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Phát lại' })).toBeEnabled();
+  });
+
   it('advances a selected second-container table row to its global playback offset', () => {
     render(<PackingWorkspace />);
 
     fireEvent.click(screen.getByRole('button', { name: /tối ưu xếp hàng/i }));
-    expect(screen.getByText('Bước 0/2')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('slider', { name: 'Tiến trình xếp hàng' }), { target: { value: '0' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Kiện sau' }));
 
@@ -77,6 +85,6 @@ describe('PackingWorkspace global playback', () => {
     act(() => vi.advanceTimersByTime(650));
     expect(screen.getByText('Bước 2/2')).toBeInTheDocument();
     expect(within(viewer).getByRole('heading', { name: 'Container 2' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Phát' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Phát lại' })).toBeInTheDocument();
   });
 });
