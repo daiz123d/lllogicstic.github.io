@@ -2,7 +2,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.122.0/build/three.m
 import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.122.0/examples/jsm/controls/OrbitControls.js';
 import { packMultipleContainers, aggregateBoxes, containerPresets, findBestContainer, selectBestPresetContainers, validateManualPlacement } from './binPacking.js';
 import { isBoxFieldKey, parseBoxRows } from './boxImport.js';
-import { buildBoxLabel, getCameraPlacement, getContainerRibCount } from './sceneHelpers.js';
+import { buildBoxLabel, computeContainerOffsets, getCameraPlacement, getContainerRibCount } from './sceneHelpers.js';
 
 let scene, camera, renderer, controls, raycaster, pointer;
 let boxes = [];
@@ -200,7 +200,12 @@ function initScene() {
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
+  controls.dampingFactor = 0.08;
+  controls.zoomSpeed = 0.45;
+  controls.rotateSpeed = 0.72;
+  controls.panSpeed = 0.65;
+  controls.minDistance = 220;
+  controls.maxDistance = 9000;
   raycaster = new THREE.Raycaster();
   pointer = new THREE.Vector2();
   renderer.domElement.addEventListener('click', onCanvasClick);
@@ -789,9 +794,9 @@ function drawContainer(container, offset) {
     background: 'rgba(6, 32, 48, 0.82)',
     color: '#dff7ff',
     border: '#67e8f9',
-    fontSize: 22,
-    scaleFactor: 0.28,
-    maxWidth: 120
+    fontSize: 25,
+    scaleFactor: 0.34,
+    maxWidth: 170
   });
   label.position.set(x + width / 2, height + 42, z + length / 2);
   label.userData.isContainer = true;
@@ -905,9 +910,9 @@ function drawBoxes(packed, offset, opts = { clear: true }) {
       background: boxKey === selectedBoxKey ? 'rgba(255, 209, 102, 0.92)' : 'rgba(15, 23, 42, 0.78)',
       color: boxKey === selectedBoxKey ? '#111827' : '#f8fbff',
       border: boxKey === selectedBoxKey ? '#ffffff' : '#7dd3fc',
-      fontSize: 23,
-      scaleFactor: 0.32,
-      maxWidth: 82
+      fontSize: 25,
+      scaleFactor: 0.36,
+      maxWidth: 112
     });
     label.position.set(0, b.height * scale / 2 + 24, 0);
     label.userData.isBoxLabel = true;
@@ -1064,15 +1069,7 @@ function drawAllContainers(expanded) {
 }
 
 function computeOffsets(list) {
-  if (!list.length) return [];
-  const maxFootprint = list.reduce((acc, c) => Math.max(acc, c.width * scale, c.length * scale), 0);
-  const padding = maxFootprint * 0.3 + 200;
-  const cols = Math.ceil(Math.sqrt(list.length));
-  return list.map((_, idx) => {
-    const row = Math.floor(idx / cols);
-    const col = idx % cols;
-    return { x: col * (maxFootprint + padding), z: row * (maxFootprint + padding) };
-  });
+  return computeContainerOffsets(list, scale);
 }
 
 function switchViewMode(mode) {
