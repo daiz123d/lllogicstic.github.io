@@ -33,6 +33,7 @@ vi.mock('@react-three/fiber', async () => {
       return <div data-testid="scene-canvas" onClick={onPointerMissed}>{children}</div>;
     },
     useThree: () => ({
+      invalidate: vi.fn(),
       camera: { position: { set: vi.fn() }, lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoom: 1 },
       size: { width: 1200, height: 700 },
     }),

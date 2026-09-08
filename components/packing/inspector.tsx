@@ -22,6 +22,11 @@ type InspectorProps = {
   onStrategyChange: (strategy: PackingStrategy) => void;
   onAllowRotationChange: (value: boolean) => void;
   onImportClick: (target: 'cartons' | 'containers') => void;
+  activeTab?: TabId;
+  onTabChange?: (tab: TabId) => void;
+  importMode?: 'replace' | 'append';
+  onImportModeChange?: (mode: 'replace' | 'append') => void;
+  importing?: boolean;
 };
 
 const tabs = [
@@ -31,16 +36,18 @@ const tabs = [
   { id: 'import', label: 'Import', icon: FileUp },
 ] as const;
 
-type TabId = (typeof tabs)[number]['id'];
+export type TabId = (typeof tabs)[number]['id'];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="inspector-field"><span>{label}</span>{children}</label>;
 }
 
 export function Inspector(props: InspectorProps) {
-  const [active, setActive] = useState<TabId>('cargo');
+  const [localActive, setLocalActive] = useState<TabId>('cargo');
+  const active = props.activeTab ?? localActive;
+  const setActive = props.onTabChange ?? setLocalActive;
 
-  return <aside className="packing-inspector" aria-label="Inspector điều phối">
+  return <aside id="packing-inspector" className="packing-inspector" aria-label="Inspector điều phối" aria-busy={props.importing}>
     <div className="inspector-heading"><div><p className="section-kicker">BẢNG KIỂM TRA</p><h2>Điều phối xếp hàng</h2></div><span className="telemetry-tag">LIVE</span></div>
     <div className="inspector-tabs" role="tablist" aria-label="Nhóm dữ liệu">
       {tabs.map(({ id, label, icon: Icon }) => <button key={id} id={`${id}-tab`} role="tab" type="button" aria-selected={active === id} aria-controls={`${id}-panel`} onClick={() => setActive(id)}><Icon size={15} aria-hidden="true" /><span>{label}</span></button>)}
@@ -75,6 +82,6 @@ export function Inspector(props: InspectorProps) {
 
     {active === 'strategy' && <section id="strategy-panel" role="tabpanel" aria-labelledby="strategy-tab" aria-label="Chiến lược" className="inspector-scroll strategy-panel"><div className="section-head"><div><h3>Quy tắc tối ưu</h3><p>Thay đổi chiến lược rồi chạy tối ưu lại.</p></div></div><Field label="Chiến lược xếp"><select value={props.strategy} onChange={(event) => props.onStrategyChange(event.target.value as PackingStrategy)}><option value="minContainers">Ít container nhất</option><option value="maxFill">Tỷ lệ lấp đầy cao</option><option value="inputOrder">Theo thứ tự nhập</option><option value="heavyBottom">Kiện nặng ở dưới</option></select></Field><label className="switch-field"><input type="checkbox" checked={props.allowRotation} onChange={(event) => props.onAllowRotationChange(event.target.checked)} /><span>Cho phép xoay kiện để tận dụng không gian</span></label></section>}
 
-    {active === 'import' && <section id="import-panel" role="tabpanel" aria-labelledby="import-tab" aria-label="Import" className="inspector-scroll import-panel"><FileUp size={26} aria-hidden="true" /><h3>Nhập dữ liệu xếp hàng</h3><p>Hỗ trợ tệp CSV, JSON, XLSX và XLS. Dữ liệu hợp lệ sẽ được thêm vào danh sách hiện tại.</p><div className="import-actions"><button type="button" className="teal-action" onClick={() => props.onImportClick('cartons')}>Nhập hàng hóa</button><button type="button" className="command-button" onClick={() => props.onImportClick('containers')}>Nhập container</button></div></section>}
+    {active === 'import' && <section id="import-panel" role="tabpanel" aria-labelledby="import-tab" aria-label="Import" className="inspector-scroll import-panel"><FileUp size={26} aria-hidden="true" /><h3>Nhập dữ liệu xếp hàng</h3><p>Chọn loại dữ liệu và cách nhập. Hỗ trợ CSV, JSON, XLSX và XLS; dòng sai sẽ được báo lại.</p><fieldset className="import-mode" disabled={props.importing}><legend>Cách nhập dữ liệu</legend><label><input type="radio" name="import-mode" checked={(props.importMode ?? 'replace') === 'replace'} onChange={() => props.onImportModeChange?.('replace')} />Thay danh sách hiện tại</label><label><input type="radio" name="import-mode" checked={props.importMode === 'append'} onChange={() => props.onImportModeChange?.('append')} />Thêm vào danh sách</label></fieldset><div className="import-actions"><button type="button" className="teal-action" disabled={props.importing} onClick={() => props.onImportClick('cartons')}>Nhập hàng hóa</button><button type="button" className="command-button" disabled={props.importing} onClick={() => props.onImportClick('containers')}>Nhập container</button></div></section>}
   </aside>;
 }

@@ -39,6 +39,9 @@ describe('Inspector', () => {
 
   it('shows cargo controls only after the Cargo tab is selected', () => {
     render(<Inspector
+      containerMode="presets"
+      sampleContainers={sampleContainers}
+      onContainerModeChange={vi.fn()}
       containers={[container]}
       cartons={[carton]}
       strategy={'minContainers' as PackingStrategy}

@@ -19,13 +19,14 @@ const threeSpies = vi.hoisted(() => {
     get zoom() { return zoom; },
     set zoom(value: number) { zoom = value; zoomSet(value); },
   };
-  return { positionSet, lookAt, updateProjectionMatrix, zoomSet, defaultCamera };
+  return { positionSet, lookAt, updateProjectionMatrix, zoomSet, defaultCamera, invalidate: vi.fn() };
 });
 const threeState = vi.hoisted(() => ({ camera: null as null | typeof threeSpies.defaultCamera }));
 
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="scene-canvas">{children}</div>,
   useThree: () => ({
+    invalidate: threeSpies.invalidate,
     camera: threeState.camera ?? threeSpies.defaultCamera,
     size: { width: 1200, height: 700 },
   }),
@@ -191,7 +192,7 @@ describe('ContainerScene viewer contract', () => {
     const { rerender } = render(<ContainerScene packedContainer={packedContainer} {...sceneProps} />);
 
     threeSpies.positionSet.mockClear();
-    rerender(<ContainerScene packedContainer={sameSizedContainer} placements={sameSizedContainer.packed} {...sceneProps} />);
+    rerender(<ContainerScene packedContainer={sameSizedContainer} {...sceneProps} placements={sameSizedContainer.packed} />);
 
     expect(threeSpies.positionSet).toHaveBeenCalled();
   });

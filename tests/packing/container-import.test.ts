@@ -13,3 +13,21 @@ it('accepts Vietnamese container headers and rejects invalid dimensions', () => 
   }]);
   expect(parsed.skipped).toBe(1);
 });
+
+it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY])(
+  'rejects an explicitly invalid container quantity: %s',
+  (quantity) => {
+    expect(parseContainerRows([{ length: 6, width: 2, height: 2, quantity }]))
+      .toEqual({ containers: [], skipped: 1 });
+  },
+);
+
+it.each([-1, Number.POSITIVE_INFINITY])('rejects an explicitly invalid max weight: %s', (maxWeight) => {
+  expect(parseContainerRows([{ length: 6, width: 2, height: 2, maxWeight }]))
+    .toEqual({ containers: [], skipped: 1 });
+});
+
+it('keeps defaults for omitted optional container values', () => {
+  expect(parseContainerRows([{ length: 6, width: 2, height: 2 }]).containers[0])
+    .toMatchObject({ quantity: 1, maxWeight: 0 });
+});

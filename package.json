@@ -10,7 +10,8 @@
     "test": "vitest run && node --test tests/binPacking.test.mjs",
     "test:unit": "vitest run",
     "test:legacy": "node --test tests/binPacking.test.mjs",
-    "e2e": "playwright test"
+    "typecheck": "tsc --noEmit",
+    "e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@react-three/drei": "10.7.7",

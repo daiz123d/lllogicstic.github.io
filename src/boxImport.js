@@ -1,12 +1,13 @@
 const DEFAULT_BOX_COLOR = '#6dd3ff';
 
 const FIELD_ALIASES = {
+  label: ['label', 'name', 'ten', 'tenhang'],
   length: ['length', 'dai', 'chieudai'],
   width: ['width', 'rong', 'chieurong'],
   height: ['height', 'cao', 'chieucao'],
   quantity: ['quantity', 'soluong', 'sl'],
   weight: ['weight', 'khoiluong', 'kg'],
-  stackable: ['stackable', 'xepchong'],
+  stackable: ['stackable', 'xepchong', 'cothechong'],
   color: ['color', 'mau']
 };
 
@@ -53,13 +54,15 @@ function parseMetric(value) {
 }
 
 function parseQuantity(value) {
-  const quantity = Math.floor(parseMetric(value));
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+  if (isBlankValue(value)) return 1;
+  const quantity = parseMetric(value);
+  return Number.isSafeInteger(quantity) && quantity > 0 ? quantity : null;
 }
 
 function parseWeight(value) {
+  if (isBlankValue(value)) return 0;
   const weight = parseMetric(value);
-  return Number.isFinite(weight) && weight >= 0 ? weight : 0;
+  return Number.isFinite(weight) && weight >= 0 ? weight : null;
 }
 
 function parseStackable(value) {
@@ -78,20 +81,25 @@ export function normalizeBoxRecord(record) {
   const length = parseMetric(getValue(record, 'length'));
   const width = parseMetric(getValue(record, 'width'));
   const height = parseMetric(getValue(record, 'height'));
+  const quantity = parseQuantity(getValue(record, 'quantity'));
+  const weight = parseWeight(getValue(record, 'weight'));
 
-  if ([width, height, length].some(value => !Number.isFinite(value) || value <= 0)) {
+  if ([width, height, length].some(value => !Number.isFinite(value) || value <= 0) || quantity === null || weight === null) {
     return null;
   }
 
-  return {
+  const box = {
     width,
     height,
     length,
-    quantity: parseQuantity(getValue(record, 'quantity')),
+    quantity,
     color: getValue(record, 'color') || DEFAULT_BOX_COLOR,
-    weight: parseWeight(getValue(record, 'weight')),
+    weight,
     stackable: parseStackable(getValue(record, 'stackable'))
   };
+  const label = getValue(record, 'label');
+  if (!isBlankValue(label)) box.label = String(label).trim();
+  return box;
 }
 
 export function parseBoxRows(rows) {

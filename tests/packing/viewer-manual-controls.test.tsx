@@ -11,6 +11,7 @@ const dreiSpies = vi.hoisted(() => ({ transformControls: vi.fn(() => null) }));
 vi.mock('@react-three/fiber', () => ({
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="scene-canvas">{children}</div>,
   useThree: () => ({
+    invalidate: vi.fn(),
     camera: { position: { set: vi.fn() }, lookAt: vi.fn(), updateProjectionMatrix: vi.fn(), zoom: 1 },
     size: { width: 1200, height: 700 },
   }),

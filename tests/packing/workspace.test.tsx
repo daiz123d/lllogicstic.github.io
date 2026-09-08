@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fileIoMocks = vi.hoisted(() => ({
-  downloadPackingWorkbook: vi.fn(async () => {}),
+  downloadPackingWorkbook: vi.fn<typeof import('@/lib/packing/file-io').downloadPackingWorkbook>(async () => {}),
   readRowsFromFile: vi.fn(async () => [] as Record<string, unknown>[]),
 }));
 
@@ -89,7 +89,7 @@ describe('PackingWorkspace', () => {
     expectAutomaticCoordinates();
   });
 
-  it('exports the immutable automatic result while keeping presentation coordinates local', async () => {
+  it('exports the adjusted coordinates shown in the result table', async () => {
     render(<PackingWorkspace />);
     optimizeAndApplyOverride();
 
@@ -97,8 +97,74 @@ describe('PackingWorkspace', () => {
     await waitFor(() => expect(fileIoMocks.downloadPackingWorkbook).toHaveBeenCalledTimes(1));
 
     const exportedResult = fileIoMocks.downloadPackingWorkbook.mock.calls[0][2];
-    expect(exportedResult?.results[0].packed[0]).toMatchObject({ x: 0, y: 0, z: 0 });
+    expect(exportedResult?.results[0].packed[0]).toMatchObject({ x: .25, y: 0, z: 0 });
     expect(screen.getAllByRole('row')[1]).toHaveTextContent(/0\.3 . 0\.0 . 0\.0/);
+  });
+
+  it('opens setup from the workflow and offers explicit replace or append import', () => {
+    render(<PackingWorkspace />);
+    fireEvent.click(screen.getByRole('button', { name: '2 Thiết lập container' }));
+    expect(screen.getByRole('tabpanel', { name: 'Container' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Nhập file' }));
+    expect(screen.getByRole('tabpanel', { name: 'Import' })).toBeVisible();
+    expect(screen.getByRole('radio', { name: 'Thay danh sách hiện tại' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Thêm vào danh sách' })).not.toBeChecked();
+  });
+
+  it('replaces sample containers and activates imported containers', async () => {
+    fileIoMocks.readRowsFromFile.mockResolvedValue([{ name: 'Xe nhập', length: 6, width: 2, height: 2, quantity: 1 }]);
+    const { container } = render(<PackingWorkspace />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Import' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Nhập container' }));
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['fixture'], 'xe.csv')] } });
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Dùng container tự nhập' })).toBeChecked());
+    expect(screen.getByRole('textbox', { name: 'Tên container' })).toHaveValue('Xe nhập');
+    expect(screen.getAllByRole('textbox', { name: 'Tên container' })).toHaveLength(1);
+  });
+
+  it('restores the automatic layout without recomputing when adjustments are discarded', () => {
+    render(<PackingWorkspace />);
+    optimizeAndApplyOverride();
+    fireEvent.click(screen.getByRole('button', { name: 'Khôi phục cách xếp tự động' }));
+    expectAutomaticCoordinates();
+    expect(screen.getByText('Bước 4/4')).toBeInTheDocument();
+  });
+
+  it('preserves manual adjustments when importing a file fails', async () => {
+    fileIoMocks.readRowsFromFile.mockRejectedValueOnce(new Error('Tệp bị lỗi'));
+    const { container } = render(<PackingWorkspace />);
+    optimizeAndApplyOverride();
+
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['bad'], 'hang.csv')] },
+    });
+
+    await waitFor(() => expect(screen.getByText('Tệp bị lỗi')).toBeInTheDocument());
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent(/0\.3 . 0\.0 . 0\.0/);
+  });
+
+  it('reports workbook download failures without losing the packing result', async () => {
+    fileIoMocks.downloadPackingWorkbook.mockRejectedValueOnce(new Error('Không thể xuất Excel'));
+    render(<PackingWorkspace />);
+    fireEvent.click(screen.getByRole('button', { name: /tối ưu xếp hàng/i }));
+    fireEvent.click(screen.getByRole('button', { name: /xuất xlsx/i }));
+
+    await waitFor(() => expect(screen.getByText('Không thể xuất Excel')).toBeInTheDocument());
+    expect(screen.getByText('Bước 4/4')).toBeInTheDocument();
+  });
+
+  it.each(['0.5', '1.5', '9007199254740992'])('blocks invalid carton quantity %s', (quantity) => {
+    render(<PackingWorkspace />);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Số lượng' }), { target: { value: quantity } });
+    expect(screen.getByRole('button', { name: /tối ưu xếp hàng/i })).toBeDisabled();
+  });
+
+  it('blocks fractional container quantities in manual mode', () => {
+    render(<PackingWorkspace />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Container' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Dùng container tự nhập' }));
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Số lượng' }), { target: { value: '1.5' } });
+    expect(screen.getByRole('button', { name: /tối ưu xếp hàng/i })).toBeDisabled();
   });
 
   it('summarizes the selected sample containers when optimisation starts', () => {

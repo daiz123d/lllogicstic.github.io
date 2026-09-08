@@ -29,7 +29,7 @@ describe('ViewerPlayback', () => {
     const onStep = vi.fn();
     const onPlaying = vi.fn();
     const onSpeed = vi.fn();
-    const props = { step: 1, total: 2, speed: 2, onStepChange: onStep, onPlayingChange: onPlaying, onSpeedChange: onSpeed };
+    const props = { step: 1, total: 2, speed: 2 as const, onStepChange: onStep, onPlayingChange: onPlaying, onSpeedChange: onSpeed };
     const { rerender } = render(<ViewerPlayback {...props} playing />);
 
     vi.advanceTimersByTime(324);

@@ -99,12 +99,12 @@ async function installPlaybackTimerProbe(page: import('@playwright/test').Page) 
 }
 
 async function playbackTimerStats(page: import('@playwright/test').Page) {
-  return page.evaluate(() => (window as Window & { __playbackTimerStats: () => PlaybackTimerStats }).__playbackTimerStats());
+  return page.evaluate(() => (window as unknown as Window & { __playbackTimerStats: () => PlaybackTimerStats }).__playbackTimerStats());
 }
 
 async function waitForActivePlaybackTimer(page: import('@playwright/test').Page, expectedDelay?: number) {
   return page.evaluate((delay) => new Promise<PlaybackTimerStats>((resolve, reject) => {
-    const scope = window as Window & { __playbackTimerStats: () => PlaybackTimerStats };
+    const scope = window as unknown as Window & { __playbackTimerStats: () => PlaybackTimerStats };
     const deadline = performance.now() + 5_000;
     const inspect = () => {
       const stats = scope.__playbackTimerStats();
@@ -118,12 +118,12 @@ async function waitForActivePlaybackTimer(page: import('@playwright/test').Page,
 }
 
 async function restorePlaybackTimerProbe(page: import('@playwright/test').Page) {
-  await page.evaluate(() => (window as Window & { __restorePlaybackTimerProbe?: () => void }).__restorePlaybackTimerProbe?.());
+  await page.evaluate(() => (window as unknown as Window & { __restorePlaybackTimerProbe?: () => void }).__restorePlaybackTimerProbe?.());
 }
 
 async function triggerPlaybackCleanupBoundary(page: import('@playwright/test').Page, action: 'pause' | 'reset') {
   return page.evaluate((boundaryAction) => new Promise<PlaybackTimerBoundary>((resolve, reject) => {
-    const scope = window as Window & { __playbackTimerStats: () => PlaybackTimerStats };
+    const scope = window as unknown as Window & { __playbackTimerStats: () => PlaybackTimerStats };
     const deadline = performance.now() + 5_000;
     const inspect = () => {
       const stats = scope.__playbackTimerStats();

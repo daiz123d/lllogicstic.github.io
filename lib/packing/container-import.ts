@@ -28,6 +28,10 @@ function isBlank(row: Record<string, unknown>) {
   return Object.values(row).every((value) => value === null || value === undefined || String(value).trim() === '');
 }
 
+function isBlankValue(value: unknown) {
+  return value === null || value === undefined || String(value).trim() === '';
+}
+
 export function parseContainerRows(rows: Record<string, unknown>[]): ImportedContainers {
   const containers: ImportedContainers['containers'] = [];
   let skipped = 0;
@@ -41,15 +45,21 @@ export function parseContainerRows(rows: Record<string, unknown>[]): ImportedCon
       skipped += 1;
       continue;
     }
-    const quantityValue = Math.floor(metric(valueFor(row, 'quantity')));
-    const maxWeightValue = metric(valueFor(row, 'maxWeight'));
+    const rawQuantity = valueFor(row, 'quantity');
+    const rawMaxWeight = valueFor(row, 'maxWeight');
+    const quantityValue = isBlankValue(rawQuantity) ? 1 : metric(rawQuantity);
+    const maxWeightValue = isBlankValue(rawMaxWeight) ? 0 : metric(rawMaxWeight);
+    if (!Number.isSafeInteger(quantityValue) || quantityValue <= 0 || !Number.isFinite(maxWeightValue) || maxWeightValue < 0) {
+      skipped += 1;
+      continue;
+    }
     containers.push({
       name: String(valueFor(row, 'name') ?? `Container ${containers.length + 1}`).trim() || `Container ${containers.length + 1}`,
       length,
       width,
       height,
-      quantity: Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : 1,
-      maxWeight: Number.isFinite(maxWeightValue) && maxWeightValue >= 0 ? maxWeightValue : 0,
+      quantity: quantityValue,
+      maxWeight: maxWeightValue,
     });
   }
   return { containers, skipped };

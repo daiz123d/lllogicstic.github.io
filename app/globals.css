@@ -124,3 +124,37 @@ input[type="color"] { min-height: 38px; padding: 3px; }
 @media (prefers-reduced-motion: reduce) {
   .scene-label, .scene-floor-only, .plan-box, .packing-viewport { transition: none !important; animation: none !important; }
 }
+
+/* Connected packing workflow */
+.workflow-stepper button { display: inline-flex; align-items: center; min-height: 40px; padding: 6px 8px; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.workflow-stepper button[aria-current="step"] { border-color: var(--port-line-strong); background: rgba(34,211,238,.07); }
+.workflow-stepper button:disabled, .command-button:disabled, .teal-action:disabled { opacity: .45; cursor: not-allowed; }
+.workflow-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 12px 15px; border: 1px solid var(--port-line-strong); border-radius: 8px; color: var(--port-muted); background: var(--port-panel); font-size: .8rem; line-height: 1.5; }
+.workflow-notice.warning { color: var(--port-amber); border-color: rgba(251,191,36,.4); }
+.workflow-notice ul { flex-basis: 100%; margin: 0; padding-left: 18px; }
+.import-mode { display: grid; width: 100%; gap: 10px; margin: 16px 0 8px; padding: 14px; border: 1px solid var(--port-line-strong); border-radius: 8px; text-align: left; font-size: .8rem; }
+.import-mode legend { padding: 0 5px; color: var(--port-muted); }
+.import-mode label { display: flex; align-items: center; gap: 8px; }
+.import-mode input { accent-color: var(--port-cyan); }
+.stage-status { padding-block: 10px; line-height: 1.5; }
+.status-dot.working { animation: packing-pulse 1s ease-in-out infinite; background: var(--port-cyan); }
+@keyframes packing-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .status-dot.working { animation: none; } }
+@media (max-width: 767px) {
+  .workflow-stepper { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; white-space: normal; }
+  .workflow-stepper i { display: none; }
+  .workflow-stepper button { min-width: 0; padding: 7px 4px; font-size: .68rem; white-space: normal; text-align: left; }
+  .stage-context { display: none; }
+  .workflow-notice .command-button { width: 100%; }
+}
+.simulation-stage, .simulation-stage > *, .viewer-panel > *, .view-toggle, .playback-controls { min-width: 0; }
+.simulation-stage > * { max-width: 100%; }
+.viewer-panel { grid-template-columns: minmax(0, 1fr); }
+.import-mode input { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
+.import-mode label { justify-content: flex-start; }
+@media (max-width: 767px) {
+  .playback-panel { grid-template-columns: minmax(0, 1fr); }
+  .playback-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .playback-controls input { grid-column: 1 / -1; grid-row: 2; width: 100%; min-width: 0; min-height: 36px; }
+  .view-toggle button { min-width: 0; }
+}

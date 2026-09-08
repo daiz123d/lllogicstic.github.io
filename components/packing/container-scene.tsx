@@ -57,7 +57,7 @@ function placementKey(containerId: string, placement: Placement) {
 }
 
 function CameraController({ preset, focusToken, packedContainer, mode, activeContainerId, controls }: CameraControllerProps) {
-  const { camera, size } = useThree();
+  const { camera, size, invalidate } = useThree();
   const { width, height, length } = packedContainer.container;
   const allPlacements = packedContainer.packed;
 
@@ -83,7 +83,8 @@ function CameraController({ preset, focusToken, packedContainer, mode, activeCon
     camera.updateProjectionMatrix();
     controls.current?.target.set(...target);
     controls.current?.update();
-  }, [camera, preset, focusToken, activeContainerId, width, height, length, allPlacements, size.width, size.height]);
+    invalidate();
+  }, [camera, invalidate, preset, focusToken, activeContainerId, width, height, length, allPlacements, size.width, size.height]);
 
   return null;
 }
@@ -454,7 +455,7 @@ export function ContainerScene({ packedContainer, placements, selectedPlacementI
   useEffect(() => () => contextLossCleanup.current?.(), []);
 
   return <div className="scene-canvas" data-empty-region-count={mode === 'space' ? emptyRegions.length : 0} onContextMenu={(event) => event.preventDefault()}>
-    <Canvas shadows dpr={[1, 2]} onPointerMissed={onBackgroundClick} onCreated={({ gl }) => {
+    <Canvas frameloop="demand" shadows dpr={[1, 2]} onPointerMissed={onBackgroundClick} onCreated={({ gl }) => {
       contextLossCleanup.current?.();
       contextLossCleanup.current = onRenderingFailure ? watchWebglContextLoss(gl.domElement, onRenderingFailure) : null;
     }}>

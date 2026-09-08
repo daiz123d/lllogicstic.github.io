@@ -1,17 +1,19 @@
 'use client';
 
-import { Box, ChevronLeft, Container, History, LayoutDashboard, Menu, Package, Radar } from 'lucide-react';
+import { Box, ChevronLeft, Container, FileUp, LayoutDashboard, ListChecks, Menu, Package } from 'lucide-react';
+
+export type WorkspaceSection = 'workspace' | 'simulation' | 'container' | 'cargo' | 'results' | 'import';
 
 const items = [
-  { label: 'Tổng quan', icon: LayoutDashboard, active: true },
-  { label: 'Trình mô phỏng 3D', icon: Box },
-  { label: 'Container', icon: Container },
-  { label: 'Hộp hàng', icon: Package },
-  { label: 'Lịch sử xếp', icon: History },
-  { label: 'Theo dõi', icon: Radar },
-];
+  { label: 'Tổng quan', icon: LayoutDashboard, section: 'workspace' },
+  { label: 'Hộp hàng', icon: Package, section: 'cargo' },
+  { label: 'Container', icon: Container, section: 'container' },
+  { label: 'Trình mô phỏng 3D', icon: Box, section: 'simulation' },
+  { label: 'Kết quả xếp', icon: ListChecks, section: 'results' },
+  { label: 'Nhập dữ liệu', icon: FileUp, section: 'import' },
+] as const;
 
-export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export function Sidebar({ collapsed, onToggle, onNavigate, activeSection = 'workspace' }: { collapsed: boolean; onToggle: () => void; onNavigate?: (section: WorkspaceSection) => void; activeSection?: WorkspaceSection }) {
   return (
     <aside className="control-sidebar">
       <div className="brand-row">
@@ -22,8 +24,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         </button>
       </div>
       <nav className="sidebar-nav" aria-label="Điều hướng chính" data-collapsed={collapsed}>
-        {items.map(({ label, icon: Icon, active }) => (
-          <a href={label === 'Tổng quan' ? '#workspace' : `#${label.toLowerCase().replaceAll(' ', '-')}`} className={active ? 'nav-link active' : 'nav-link'} key={label} title={collapsed ? label : undefined}>
+        {items.map(({ label, icon: Icon, section }) => (
+          <a href={`#${['cargo', 'container', 'import'].includes(section) ? 'packing-inspector' : section}`} onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(section); } }} className={activeSection === section ? 'nav-link active' : 'nav-link'} aria-current={activeSection === section ? 'location' : undefined} key={label} title={collapsed ? label : undefined}>
             <Icon aria-hidden="true" size={19} strokeWidth={1.8} />
             <span>{label}</span>
           </a>
@@ -31,7 +33,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       </nav>
       <div className="optimizer-status">
         <span className="status-pulse" aria-hidden="true" />
-        <div><small>HỆ THỐNG</small><strong>Optimizer Online</strong></div>
+        <div><small>DỮ LIỆU TRÊN MÁY</small><strong>Xử lý trong trình duyệt</strong></div>
       </div>
     </aside>
   );
