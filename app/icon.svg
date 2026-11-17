@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="16" fill="#07131f" />
+  <text x="32" y="41" fill="#f4f8fb" font-family="Arial, sans-serif" font-size="25" font-weight="800" letter-spacing="-1.6" text-anchor="middle">KLD</text>
+  <path d="M16 49h32" stroke="#22d3ee" stroke-linecap="round" stroke-width="4" />
+</svg>
