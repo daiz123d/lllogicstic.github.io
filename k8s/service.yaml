@@ -3,17 +3,14 @@ kind: Service
 metadata:
   name: weeb
   namespace: argocd
-  annotations:
-    field.cattle.io/publicEndpoints: '[{"port":30080,"protocol":"TCP","serviceName":"argocd:weeb","allNodes":true}]'
 spec:
   type: NodePort
   externalTrafficPolicy: Cluster
   internalTrafficPolicy: Cluster
   ports:
-    - name: gitlab
+    - name: http
       port: 8080
       protocol: TCP
       targetPort: 8080
-      nodePort: 30080
   selector:
     app: weeb

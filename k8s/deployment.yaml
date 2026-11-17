@@ -14,10 +14,14 @@ spec:
     metadata:
       labels:
         app: weeb
+      annotations:
+        app.kubernetes.io/rollout-version: "latest-web-code-20260622-1525"
     spec:
+      imagePullSecrets:
+        - name: harbor-pull-secret
       containers:
         - name: weeb
-          image: docker.io/daiz123d/tesst:latest
+          image: harbor.tinasoft.io/daiiiitaa/tesst:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

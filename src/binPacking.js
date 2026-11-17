@@ -103,19 +103,10 @@ export function selectBestPresetContainers(boxes, options = {}) {
         const remainingCount = countPackingBoxes(remaining);
         const best = findBestContainer(remaining, options);
 
-        if (!best || best.packedCount <= 0 || best.leftover >= remainingCount) {
-            break;
-        }
+        if (!best || best.packedCount <= 0 || best.leftover >= remainingCount) break;
 
         results.push({
-            container: {
-                name: best.name,
-                width: best.width,
-                height: best.height,
-                length: best.length,
-                maxWeight: best.maxWeight || 0,
-                presetName: best.name
-            },
+            container: { name: best.name, width: best.width, height: best.height, length: best.length, maxWeight: best.maxWeight || 0, presetName: best.name },
             packed: best.packed,
             unpacked: best.unpacked,
             fitsAll: best.fitsAll
@@ -232,6 +223,10 @@ export function validateManualPlacement(container, packedBoxes, candidate) {
 
     if (others.some(box => boxesOverlap(normalized, box))) {
         errors.push('collision');
+    }
+
+    if (normalized.stackable === false && normalized.y > epsilon) {
+        errors.push('non-stackable-floor');
     }
 
     if (!isBoxSupported(normalized, others)) {
@@ -389,6 +384,7 @@ export function packBoxes(containerWidth, containerHeight, containerLength, boxe
     function isSupported(candidate) {
         const epsilon = 1e-9;
         if (candidate.y <= epsilon) return true;
+        if (candidate.stackable === false) return false;
 
         return packed.some(support => (
             support.stackable !== false &&
@@ -407,7 +403,8 @@ export function packBoxes(containerWidth, containerHeight, containerLength, boxe
             z: space.z,
             width: orientation.width,
             height: orientation.height,
-            length: orientation.length
+            length: orientation.length,
+            stackable: orientation.stackable
         };
 
         if (

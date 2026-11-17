@@ -15,7 +15,7 @@ const boxImportModuleUrl = `data:text/javascript;base64,${Buffer.from(boxImportS
 const { isBoxFieldKey, normalizeBoxRecord, parseBoxRows } = await import(boxImportModuleUrl);
 const sceneHelpersSource = fs.readFileSync(new URL('../src/sceneHelpers.js', import.meta.url), 'utf8');
 const sceneHelpersModuleUrl = `data:text/javascript;base64,${Buffer.from(sceneHelpersSource).toString('base64')}`;
-const { buildBoxLabel, getCameraPlacement, getContainerRibCount } = await import(sceneHelpersModuleUrl);
+const { buildBoxLabel, computeContainerOffsets, getCameraPlacement, getContainerRibCount } = await import(sceneHelpersModuleUrl);
 const trackingLogicSource = fs.readFileSync(new URL('../src/trackingLogic.js', import.meta.url), 'utf8');
 const trackingLogicModuleUrl = `data:text/javascript;base64,${Buffer.from(trackingLogicSource).toString('base64')}`;
 const { buildTripAlerts, estimateEtaMinutes, getGpsHealth, getSlaStatus, haversineDistanceKm } = await import(trackingLogicModuleUrl);
@@ -76,6 +76,17 @@ test('does not place boxes on top of a non-stackable support box', () => {
   assert.equal(result.packed.length, 1);
   assert.equal(result.unpacked.length, 1);
   assertValidPacking(result, { width: 1, height: 2, length: 1 });
+});
+
+test('does not place a non-stackable box above another carton', () => {
+  const result = packBoxes(1, 2, 1, [
+    { id: 'base', width: 1, height: 1, length: 1, quantity: 1, weight: 1, stackable: true },
+    { id: 'no-stack', width: 1, height: 1, length: 1, quantity: 1, weight: 1, stackable: false },
+  ]);
+
+  assert.equal(result.packed.length, 1);
+  assert.equal(result.unpacked.length, 1);
+  assert.equal(result.unpacked[0].id, 'no-stack');
 });
 
 test('respects container max weight', () => {
@@ -241,9 +252,22 @@ test('box import parser recognizes common header aliases', () => {
 
 test('scene helpers build readable box labels and container ribs', () => {
   assert.equal(buildBoxLabel({ label: 'BX-01', order: 4 }), 'BX-01');
-  assert.equal(buildBoxLabel({ order: 4 }), '#4');
+  assert.equal(buildBoxLabel({ name: 'Thùng lạnh', order: 4 }), 'Thùng lạnh');
+  assert.equal(buildBoxLabel({ order: 4 }), 'Hộp 4');
   assert.equal(getContainerRibCount({ length: 12 }), 12);
   assert.equal(getContainerRibCount({ length: 1 }), 4);
+});
+
+test('scene helpers place two containers close together for comparison', () => {
+  const offsets = computeContainerOffsets([
+    { width: 2.35, length: 15 },
+    { width: 2.35, length: 15 }
+  ], 100);
+
+  assert.equal(offsets.length, 2);
+  assert.equal(offsets[0].x, 0);
+  assert.equal(offsets[1].z, 0);
+  assert.ok(offsets[1].x <= 2.35 * 100 + 170);
 });
 
 test('scene helpers compute camera placements for 3D and orthogonal views', () => {
@@ -261,13 +285,14 @@ test('scene helpers compute camera placements for 3D and orthogonal views', () =
   assert.equal(top.position.z, top.target.z);
 });
 
-test('scene helpers keep iso camera far enough for long containers', () => {
+test('scene helpers keep iso camera at an observable distance for long containers', () => {
   const placement = getCameraPlacement([{ width: 2.35, height: 2.4, length: 15 }], [{ x: 0, z: 0 }], 'iso', 100);
   const dx = placement.position.x - placement.target.x;
   const dz = placement.position.z - placement.target.z;
   const horizontalDistance = Math.hypot(dx, dz);
 
-  assert.ok(horizontalDistance >= 15 * 100 * 2.8);
+  assert.ok(horizontalDistance >= 15 * 100 * 2.1);
+  assert.ok(horizontalDistance <= 15 * 100 * 2.7);
 });
 
 test('tracking logic computes distance and ETA from GPS speed', () => {
