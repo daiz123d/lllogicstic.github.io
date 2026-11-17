@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 
-const repositoryBasePath = process.env.GITHUB_ACTIONS ? '/lllogicstic.github.io' : '';
+// GitHub Pages serves the site from the root of its custom domain (kldvn.com).
+// Prefixing assets with the repository name makes the page load without its CSS.
+const repositoryBasePath = '';
 
 const nextConfig: NextConfig = {
   output: 'export',
